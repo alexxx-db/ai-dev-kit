@@ -27,11 +27,11 @@ Prefer `uv` for all Python operations. Fall back to `pip` only if `uv` is not av
 
 ```bash
 # Preferred
-uv pip install "databricks-connect>=16.4,<17.0" faker numpy pandas holidays
+uv pip install "databricks-connect>=16.4,<17.4" faker numpy pandas holidays
 uv run python generate_data.py
 
 # Fallback if uv not available
-pip install "databricks-connect>=16.4,<17.0" faker numpy pandas holidays
+pip install "databricks-connect>=16.4,<17.4" faker numpy pandas holidays
 python generate_data.py
 ```
 

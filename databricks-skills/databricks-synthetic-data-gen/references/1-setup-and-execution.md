@@ -17,10 +17,10 @@ This guide covers all execution modes for synthetic data generation, organized b
 **Install locally:**
 ```bash
 # Preferred
-uv pip install "databricks-connect>=16.4,<17.0" faker numpy pandas holidays
+uv pip install "databricks-connect>=16.4,<17.4" faker numpy pandas holidays
 
 # Fallback if uv not available
-pip install "databricks-connect>=16.4,<17.0" faker numpy pandas holidays
+pip install "databricks-connect>=16.4,<17.4" faker numpy pandas holidays
 ```
 
 **Configure ~/.databrickscfg:**
@@ -238,6 +238,7 @@ Use this pattern to auto-detect environment and choose the right session creatio
 
 ```python
 import os
+import importlib.metadata
 
 def is_databricks_runtime():
     """Check if running on Databricks Runtime vs locally."""
@@ -246,11 +247,10 @@ def is_databricks_runtime():
 def get_databricks_connect_version():
     """Get databricks-connect version as (major, minor) tuple or None."""
     try:
-        import databricks.connect
-        version_str = databricks.connect.__version__
+        version_str = importlib.metadata.version('databricks-connect')
         parts = version_str.split('.')
         return (int(parts[0]), int(parts[1]))
-    except (ImportError, AttributeError, ValueError, IndexError):
+    except Exception:
         return None
 
 on_runtime = is_databricks_runtime()

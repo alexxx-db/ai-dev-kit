@@ -71,11 +71,11 @@ def is_databricks_runtime():
 def get_databricks_connect_version():
     """Get databricks-connect version as (major, minor) tuple or None."""
     try:
-        import databricks.connect
-        version_str = databricks.connect.__version__
+        import importlib.metadata
+        version_str = importlib.metadata.version('databricks-connect')
         parts = version_str.split('.')
         return (int(parts[0]), int(parts[1]))
-    except (ImportError, AttributeError, ValueError, IndexError):
+    except Exception:
         return None
 
 # Detect environment

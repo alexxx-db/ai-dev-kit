@@ -292,6 +292,6 @@ spark.sql(f"DROP TABLE IF EXISTS {line_items_tmp}")
 
 Run with (requires Python 3.12+):
 ```bash
-uv pip install "databricks-connect>=16.4,<17.0" faker numpy pandas
+uv pip install "databricks-connect>=16.4,<17.4" faker numpy pandas
 uv run python generate_retail_data.py
 ```
