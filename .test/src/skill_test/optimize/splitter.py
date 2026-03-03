@@ -138,7 +138,7 @@ def create_gepa_datasets(
     train: list[SkillTask] = []
     val: list[SkillTask] = []
 
-    for cat, cat_tasks in by_category.items():
+    for _cat, cat_tasks in by_category.items():
         rng.shuffle(cat_tasks)
         n_val = max(1, int(len(cat_tasks) * val_ratio))
 

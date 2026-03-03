@@ -343,7 +343,11 @@ class SkillBenchEvaluator:
             "rationale": quality_without_fb.rationale,
         }
         side_info["Judge_effectiveness"] = {
-            "verdict": "improved" if effectiveness_verdict == 1.0 else "regressed" if effectiveness_verdict == 0.0 else "same",
+            "verdict": (
+                "improved" if effectiveness_verdict == 1.0
+                else "regressed" if effectiveness_verdict == 0.0
+                else "same"
+            ),
             "delta": effectiveness_delta,
         }
 

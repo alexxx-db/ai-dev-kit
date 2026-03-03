@@ -15,7 +15,10 @@ from gepa.optimize_anything import optimize_anything, GEPAConfig
 
 from ..config import SkillTestConfig
 from ..runners.evaluate import setup_mlflow
-from .config import get_preset, validate_reflection_context, estimate_pass_duration, DEFAULT_GEN_LM, DEFAULT_TOKEN_BUDGET
+from .config import (
+    get_preset, validate_reflection_context, estimate_pass_duration,
+    DEFAULT_GEN_LM, DEFAULT_TOKEN_BUDGET,
+)
 from .utils import SKILL_KEY, count_tokens, find_skill_md
 from .skillbench_evaluator import (
     create_skillbench_evaluator,
@@ -416,7 +419,10 @@ def optimize_skill(
     if est_secs is not None:
         est_mins = est_secs / 60
         if est_mins > 5:
-            print(f"  Estimated ~{est_mins:.0f} min/pass ({est_mins * max_passes:.0f} min total for {max_passes} passes)")
+            print(
+                f"  Estimated ~{est_mins:.0f} min/pass "
+                f"({est_mins * max_passes:.0f} min total for {max_passes} passes)"
+            )
 
     for pass_num in range(1, max_passes + 1):
         print(f"\n  --- Pass {pass_num}/{max_passes} (best score so far: {best_score:.4f}) ---")
@@ -485,7 +491,10 @@ def optimize_skill(
         stc = SkillTestConfig()
         setup_mlflow(stc)
         with mlflow.start_run(run_name=f"{skill_name}_optimize_{preset}"):
-            mlflow.set_tags({"optimizer": "gepa", "skill_name": skill_name, "preset": preset, "evaluator_type": "skillbench"})
+            mlflow.set_tags({
+                "optimizer": "gepa", "skill_name": skill_name,
+                "preset": preset, "evaluator_type": "skillbench",
+            })
             mlflow.log_metrics({
                 "original_score": original_score,
                 "optimized_score": optimized_score,

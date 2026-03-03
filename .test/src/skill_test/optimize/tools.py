@@ -180,7 +180,7 @@ def write_tool_descriptions(
     """
     # Group updates by file
     updates_by_file: dict[Path, list[tuple[ToolDescription, str]]] = {}
-    for module_name, tools in tool_map.items():
+    for _module_name, tools in tool_map.items():
         for td in tools:
             if td.name in optimized:
                 updates_by_file.setdefault(td.source_path, []).append((td, optimized[td.name]))

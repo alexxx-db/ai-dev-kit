@@ -65,6 +65,53 @@ side_info = {
 }
 ```
 
+### How Baseline Evaluation Works
+
+This section walks through how a single test case is evaluated end-to-end, from dataset loading through to the baseline score that GEPA uses for optimization.
+
+#### 1. Dataset Loading (`splitter.py`)
+
+- Loads `ground_truth.yaml` test cases via `create_gepa_datasets()`
+- If >= 5 test cases: stratified train/val split by `metadata.category` (80/20 default)
+- If < 5: all used as train, no val set (single-task mode)
+- If no `ground_truth.yaml` exists: `generate_bootstrap_tasks()` auto-generates tasks from SKILL.md headers
+
+#### 2. Evaluator Construction (`skillbench_evaluator.py`)
+
+`create_skillbench_evaluator()` builds a `SkillBenchEvaluator` with:
+
+| Parameter | Purpose |
+|-----------|---------|
+| `gen_model` | LLM that generates responses (plays the role of the agent) |
+| `original_token_counts` | Token count of the original SKILL.md (for efficiency scoring) |
+| `skill_guidelines` | Deduplicated guidelines from all test cases (injected into quality judge) |
+| `tool_context` | Read-only MCP tool descriptions (included in generation prompt but not mutated) |
+
+The evaluator instantiates two MLflow judges: `quality_judge` and `regression_judge`.
+
+#### 3. Per-Task Evaluation Flow (the `__call__` method)
+
+Each test case goes through four phases:
+
+1. **Phase 1: WITH-skill generation** -- Sends the SKILL.md + tool descriptions as system context, user prompt as user message, generates response at temperature=0
+2. **Phase 2: WITHOUT-skill generation** -- Same prompt, NO skill in context. Result is **cached by prompt hash** -- computed once and reused across all GEPA iterations (the baseline never changes)
+3. **Phase 3: Judge scoring** -- `quality_judge` scores both responses against `expected_facts`, `expected_patterns`, and `guidelines` from the test case. WITHOUT-skill judge results are also cached.
+4. **Phase 4: Compute composite score** -- Weighted combination of effectiveness delta, absolute quality, structure validation, and token efficiency
+
+#### 4. Baseline Scoring (`runner.py` step 5)
+
+Before optimization starts, `_evaluate_on_tasks()` runs the evaluator on ALL training tasks with the original SKILL.md:
+
+- Collects per-task scores and `side_info` diagnostics
+- `build_skillbench_background()` summarizes: mean baseline score, which tasks are NEEDS_SKILL vs REGRESSION
+- This baseline context tells GEPA's reflection LM what's already working and what needs improvement
+
+#### 5. Why This Matters for GEPA
+
+- The `side_info` dict returned per-task contains **full judge rationale** (not truncated)
+- GEPA's reflection LM reads this rationale to understand exactly what failed
+- Better diagnostics lead to more targeted mutations and faster convergence
+
 ### Scoring Weights
 
 | Weight | Dimension | Source |

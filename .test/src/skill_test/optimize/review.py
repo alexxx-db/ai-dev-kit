@@ -267,7 +267,7 @@ def review_optimization(result: OptimizationResult) -> None:
         print(f"  Saved: {saved_skill}")
         print(f"  Apply: uv run python .test/scripts/optimize.py {result.skill_name} --apply-last")
     elif result.original_content == result.optimized_content:
-        print(f"  No improvement found -- nothing saved.")
+        print("  No improvement found -- nothing saved.")
     print(f"{'=' * 60}\n")
 
 
@@ -335,7 +335,7 @@ def apply_optimization(result: OptimizationResult) -> Path | None:
                 metrics={"optimized_score": result.optimized_score},
                 test_count=len(result.val_scores) if result.val_scores else 0,
             )
-            print(f"  Baseline updated.")
+            print("  Baseline updated.")
     except Exception:
         pass
 

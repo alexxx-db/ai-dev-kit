@@ -340,7 +340,11 @@ def get_preset(
             scaled_calls = preset_cap
 
     # Cap for slower models to avoid multi-hour hangs
-    if max_metric_calls_override is None and effective_lm not in _FAST_REFLECTION_MODELS and scaled_calls > MAX_METRIC_CALLS_PER_PASS:
+    if (
+        max_metric_calls_override is None
+        and effective_lm not in _FAST_REFLECTION_MODELS
+        and scaled_calls > MAX_METRIC_CALLS_PER_PASS
+    ):
         warnings.warn(
             f"Capping metric calls from {scaled_calls} to {MAX_METRIC_CALLS_PER_PASS} "
             f"for reflection model '{effective_lm}'. "

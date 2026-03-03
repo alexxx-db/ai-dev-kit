@@ -159,7 +159,7 @@ def summarize_failures(
     needs_skill: list[tuple[AssertionResult, AssertionResult]] = []
     regressions: list[tuple[AssertionResult, AssertionResult]] = []
 
-    for w, wo in zip(with_results, without_results):
+    for w, wo in zip(with_results, without_results, strict=True):
         label = _classify_assertion(w, wo)
         if label == "NEEDS_SKILL":
             needs_skill.append((w, wo))
@@ -182,7 +182,7 @@ def summarize_failures(
     # Regressions: concise NL (only when non-empty)
     if regressions:
         lines: list[str] = []
-        for i, (w, wo) in enumerate(regressions, 1):
+        for i, (w, _wo) in enumerate(regressions, 1):
             content = _extract_content(w)
             lines.append(f"{i}. '{content}' — passes without skill, fails with it")
         result["Regressions"] = "\n".join(lines)

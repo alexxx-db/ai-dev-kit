@@ -143,7 +143,7 @@ def _to_judge_model_and_params(model: str) -> tuple[str, dict[str, Any] | None]:
     uses standard ``provider:/model`` format.
     """
     gateway = _get_gateway_base_url()
-    if gateway and (model.startswith("databricks/") or model.startswith("databricks:/")):
+    if gateway and model.startswith(("databricks/", "databricks:/")):
         # Extract the endpoint name
         if ":/" in model:
             endpoint_name = model.split(":/", 1)[1]
