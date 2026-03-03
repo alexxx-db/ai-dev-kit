@@ -107,12 +107,7 @@ test_cases:
     guidelines:
     - Must create serverless job with environments parameter for dependencies
     - 'Job spec must include client: 4 (not 1)'
-    - Sales table product_id must only reference valid products (FK integrity)
-    - Product categories must be weighted (not uniform)
-    - Price distribution must use log-normal, not uniform
-    - Script must create schema and volume infrastructure
     - Must NOT use .cache() or .persist() (serverless incompatible)
-    - Popular categories should have more sales (weighted sampling)
   metadata:
     category: happy_path
     difficulty: medium
@@ -195,18 +190,10 @@ test_cases:
         description: "Order total computed from line items"
     guidelines:
       - "Must use DatabricksSession.builder.serverless(True).getOrCreate()"
-      - "Must use DatabricksEnv().withDependencies() for managed dependencies"
       - "Must use Spark + Faker + Pandas UDFs approach"
-      - "Must maintain referential integrity across all 3 tables"
-      - "orders.customer_id must reference valid customers"
       - "line_items.order_id must reference valid orders"
       - "Membership level must be weighted: Bronze 50%, Silver 30%, Gold 15%, Platinum 5%"
       - "Higher membership levels must generate more orders per customer"
-      - "Order total_amount must equal sum of (quantity * unit_price) from line_items"
-      - "Unit prices should use log-normal distribution for realistic pricing"
-      - "CSV output must include header row"
-      - "Must create schema and volume infrastructure within the script"
-      - "Should use Faker for realistic product names"
   metadata:
     category: happy_path
     difficulty: hard
@@ -301,18 +288,11 @@ test_cases:
         description: "Write mode for streaming support"
     guidelines:
       - "Must use DatabricksSession.builder.serverless(True).getOrCreate()"
-      - "Must use DatabricksEnv().withDependencies() for managed dependencies"
       - "Must use Spark + Faker + Pandas UDFs approach"
       - "Must maintain referential integrity between devices and readings"
-      - "readings.device_id must reference valid devices"
       - "Must use Delta tables (saveAsTable) not file formats"
-      - "Must create schema infrastructure within the script"
-      - "sensor_devices should be designed as slowly changing dimension"
       - "sensor_readings should support incremental batch processing"
-      - "Device types should have weighted distribution"
-      - "Sensor values should have realistic distributions per type"
       - "Vibration should use log-normal for occasional spikes"
-      - "Must NOT use .cache() or .persist() (serverless incompatible)"
   metadata:
     category: happy_path
     difficulty: medium

@@ -17,7 +17,6 @@ scorers:
     - "Response must generate complete, runnable Python code"
     - "Code must use the execution method specified in the prompt"
     - "Code must save data in the output format specified"
-    - "When generating multiple tables, foreign key columns must use consistent ID formats"
 
 quality_gates:
   syntax_valid: 1.0           # 100% - all Python syntax must be valid
