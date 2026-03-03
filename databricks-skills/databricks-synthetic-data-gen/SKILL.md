@@ -1,5 +1,5 @@
 ---
-name: databricks-data-generation
+name: databricks-synthetic-data-gen
 description: "Generate realistic synthetic data using Spark + Faker (strongly recommended). Supports serverless execution, multiple output formats (Parquet/JSON/CSV/Delta), and scales from thousands to millions of rows. For small datasets (<10K rows), can optionally generate locally and upload to volumes. Use when user mentions 'synthetic data', 'test data', 'generate data', 'demo dataset', 'Faker', or 'sample data'."
 ---
 
@@ -37,13 +37,14 @@ python generate_data.py
 
 ## Critical Rules
 
-1. **Always use Spark + Faker + Pandas UDFs** for data generation (scalable, parallel)
-2. **Present a plan for user approval** before generating any code
-3. **Ask for catalog/schema** - do not default
-4. **Use serverless compute** unless user explicitly requests classic cluster
-5. **Generate raw data only** - no pre-aggregated fields (unless user requests)
-6. **Create master tables first** - then generate related tables with valid FKs
-7. **NEVER use `.cache()` or `.persist()` with serverless compute** - these operations are NOT supported and will fail with `AnalysisException: PERSIST TABLE is not supported on serverless compute`. Instead, write master tables to Delta first, then read them back for FK joins.
+1. **Strongly prefer to use Spark + Faker + Pandas UDFs** for data generation (scalable, parallel)
+2. **If user specifies local** then use Polars locally instead of Spark, but suggest Spark if > 30,000 rows.
+3. **Present a plan for user approval** before generating any code
+4. **Ask for catalog/schema** - do not default
+5. **Use serverless compute** unless user explicitly requests classic cluster
+6. **Generate raw data only** - no pre-aggregated fields (unless user requests)
+7. **Create master tables first** - then generate related tables with valid FKs
+8. **NEVER use `.cache()` or `.persist()` with serverless compute** - these operations are NOT supported and will fail with `AnalysisException: PERSIST TABLE is not supported on serverless compute`. Instead, write master tables to Delta first, then read them back for FK joins.
 
 ## Generation Planning Workflow
 

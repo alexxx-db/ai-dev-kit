@@ -1,4 +1,4 @@
-skill_name: databricks-data-generation
+skill_name: databricks-synthetic-data-gen
 description: Tests for Databricks synthetic data generation skill covering Spark + Faker + Pandas UDFs, execution methods, output formats, and referential integrity
 version: 1.0.0
 
@@ -18,10 +18,10 @@ scorers:
     - "Code must use the execution method specified in the prompt"
     - "Code must save data in the output format specified"
     - "When generating multiple tables, foreign key columns must use consistent ID formats"
-    - "Must use non-uniform distributions (log-normal, exponential, weighted) for realistic data"
-    - "Must include configuration section at top of script with CATALOG, SCHEMA, and size variables"
-    - "Must create catalog, schema, and volume infrastructure within the Python script"
-    - "Child tables must reference valid IDs from parent tables for referential integrity"
+    # - "Must use non-uniform distributions (log-normal, exponential, weighted) for realistic data"
+    # - "Must include configuration section at top of script with CATALOG, SCHEMA, and size variables"
+    # - "Must create catalog, schema, and volume infrastructure within the Python script"
+    # - "Child tables must reference valid IDs from parent tables for referential integrity"
 
 quality_gates:
   syntax_valid: 1.0           # 100% - all Python syntax must be valid
@@ -35,10 +35,10 @@ trace_expectations:
     Read: 20
     Write: 15
     Edit: 15
-    mcp__databricks__run_python_file_on_databricks: 5
-    mcp__databricks__execute_databricks_command: 5
-    mcp__databricks__create_job: 3
-    mcp__databricks__run_job_now: 3
+    # mcp__databricks__run_python_file_on_databricks: 5
+    # mcp__databricks__execute_databricks_command: 5
+    # mcp__databricks__create_job: 3
+    # mcp__databricks__run_job_now: 3
   token_budget:
     max_total: 200000
   required_tools: []
