@@ -99,9 +99,7 @@ def _manage_workspace_impl(
     so it can be imported and tested directly without FastMCP wrapping."""
 
     if action not in _VALID_ACTIONS:
-        return {
-            "error": f"Invalid action '{action}'. Valid actions: {', '.join(_VALID_ACTIONS)}"
-        }
+        return {"error": f"Invalid action '{action}'. Valid actions: {', '.join(_VALID_ACTIONS)}"}
 
     # -------------------------------------------------------------------------
     # status: return info about the currently connected workspace
@@ -129,7 +127,7 @@ def _manage_workspace_impl(
             return {
                 "profiles": [],
                 "message": f"No profiles found in {_DATABRICKS_CFG_PATH}. "
-                           "Run manage_workspace(action='login', host='...') to add one.",
+                "Run manage_workspace(action='login', host='...') to add one.",
             }
         active = get_active_workspace()
         env_profile = os.environ.get("DATABRICKS_CONFIG_PROFILE")
@@ -145,9 +143,7 @@ def _manage_workspace_impl(
     # -------------------------------------------------------------------------
     if action == "switch":
         if not profile and not host:
-            return {
-                "error": "Provide either 'profile' (name from ~/.databrickscfg) or 'host' (workspace URL)."
-            }
+            return {"error": "Provide either 'profile' (name from ~/.databrickscfg) or 'host' (workspace URL)."}
 
         if profile:
             # Verify profile exists in config
@@ -156,8 +152,8 @@ def _manage_workspace_impl(
                 suggestions = ", ".join(sorted(known)) if known else "none configured"
                 return {
                     "error": f"Profile '{profile}' not found in {_DATABRICKS_CFG_PATH}. "
-                             f"Available profiles: {suggestions}. "
-                             "Use action='login' to authenticate a new workspace."
+                    f"Available profiles: {suggestions}. "
+                    "Use action='login' to authenticate a new workspace."
                 }
 
         try:
@@ -181,7 +177,7 @@ def _manage_workspace_impl(
                     "profile": profile,
                     "host": profile_host,
                     "action_required": f"Run manage_workspace(action='login', host='{profile_host}') "
-                                       "to re-authenticate via browser OAuth.",
+                    "to re-authenticate via browser OAuth.",
                 }
             return {
                 "error": f"Failed to connect to workspace: {exc}",
@@ -208,20 +204,18 @@ def _manage_workspace_impl(
         except subprocess.TimeoutExpired:
             return {
                 "error": "OAuth login timed out after 120 seconds. "
-                         "Please complete the browser authorization flow promptly, "
-                         "or run 'databricks auth login --host <url>' manually in a terminal."
+                "Please complete the browser authorization flow promptly, "
+                "or run 'databricks auth login --host <url>' manually in a terminal."
             }
         except FileNotFoundError:
             return {
                 "error": "Databricks CLI not found. Install it with: pip install databricks-cli "
-                         "or brew install databricks/tap/databricks"
+                "or brew install databricks/tap/databricks"
             }
 
         if proc.returncode != 0:
             stderr = proc.stderr.strip() or proc.stdout.strip()
-            return {
-                "error": f"databricks auth login failed (exit {proc.returncode}): {stderr}"
-            }
+            return {"error": f"databricks auth login failed (exit {proc.returncode}): {stderr}"}
 
         try:
             conn = _validate_and_switch(profile=derived_profile, host=host)

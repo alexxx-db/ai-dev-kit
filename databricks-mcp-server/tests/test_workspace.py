@@ -47,8 +47,10 @@ def test_status_returns_current_info():
     mock_client.config.host = "https://adb-111.azuredatabricks.net"
     mock_client.current_user.me.return_value = MagicMock(user_name="user@example.com")
 
-    with patch(_GET_WORKSPACE_CLIENT, return_value=mock_client), \
-         patch(_GET_ACTIVE_WORKSPACE, return_value={"profile": "DEFAULT", "host": None}):
+    with (
+        patch(_GET_WORKSPACE_CLIENT, return_value=mock_client),
+        patch(_GET_ACTIVE_WORKSPACE, return_value={"profile": "DEFAULT", "host": None}),
+    ):
         result = manage_workspace(action="status")
 
     assert result["host"] == "https://adb-111.azuredatabricks.net"
@@ -72,8 +74,10 @@ def test_status_returns_error_on_failure():
 
 def test_list_returns_all_profiles(tmp_databrickscfg):
     """action='list' returns all profiles with host URLs and marks the active one."""
-    with patch(_CFG_PATH, str(tmp_databrickscfg)), \
-         patch(_GET_ACTIVE_WORKSPACE, return_value={"profile": "prod", "host": None}):
+    with (
+        patch(_CFG_PATH, str(tmp_databrickscfg)),
+        patch(_GET_ACTIVE_WORKSPACE, return_value={"profile": "prod", "host": None}),
+    ):
         result = manage_workspace(action="list")
 
     assert "profiles" in result
@@ -88,8 +92,7 @@ def test_list_empty_config(tmp_path):
     """action='list' with an empty config returns empty list and a hint message."""
     empty_cfg = tmp_path / ".databrickscfg"
     empty_cfg.write_text("")
-    with patch(_CFG_PATH, str(empty_cfg)), \
-         patch(_GET_ACTIVE_WORKSPACE, return_value={"profile": None, "host": None}):
+    with patch(_CFG_PATH, str(empty_cfg)), patch(_GET_ACTIVE_WORKSPACE, return_value={"profile": None, "host": None}):
         result = manage_workspace(action="list")
 
     assert result["profiles"] == []
@@ -98,8 +101,10 @@ def test_list_empty_config(tmp_path):
 
 def test_list_missing_config(tmp_path):
     """action='list' when the config file doesn't exist returns empty list."""
-    with patch(_CFG_PATH, str(tmp_path / "nonexistent.cfg")), \
-         patch(_GET_ACTIVE_WORKSPACE, return_value={"profile": None, "host": None}):
+    with (
+        patch(_CFG_PATH, str(tmp_path / "nonexistent.cfg")),
+        patch(_GET_ACTIVE_WORKSPACE, return_value={"profile": None, "host": None}),
+    ):
         result = manage_workspace(action="list")
 
     assert result["profiles"] == []
@@ -109,8 +114,7 @@ def test_list_profile_without_host(tmp_path):
     """action='list' with a profile that has no host key still returns the profile."""
     cfg = tmp_path / ".databrickscfg"
     cfg.write_text("[nohostprofile]\ntoken = abc123\n")
-    with patch(_CFG_PATH, str(cfg)), \
-         patch(_GET_ACTIVE_WORKSPACE, return_value={"profile": None, "host": None}):
+    with patch(_CFG_PATH, str(cfg)), patch(_GET_ACTIVE_WORKSPACE, return_value={"profile": None, "host": None}):
         result = manage_workspace(action="list")
 
     assert len(result["profiles"]) == 1
@@ -126,8 +130,7 @@ def test_list_profile_without_host(tmp_path):
 def test_switch_valid_profile(tmp_databrickscfg):
     """action='switch' with a known profile calls _validate_and_switch and returns success."""
     success = {"host": "https://adb-222.azuredatabricks.net", "profile": "prod", "username": "user@example.com"}
-    with patch(_CFG_PATH, str(tmp_databrickscfg)), \
-         patch(_VALIDATE_AND_SWITCH, return_value=success) as mock_validate:
+    with patch(_CFG_PATH, str(tmp_databrickscfg)), patch(_VALIDATE_AND_SWITCH, return_value=success) as mock_validate:
         result = manage_workspace(action="switch", profile="prod")
 
     mock_validate.assert_called_once_with(profile="prod", host=None)
@@ -149,8 +152,7 @@ def test_switch_with_host(tmp_databrickscfg):
     """action='switch' with a host URL calls _validate_and_switch with the host."""
     host = "https://adb-222.azuredatabricks.net"
     success = {"host": host, "profile": host, "username": "user@example.com"}
-    with patch(_CFG_PATH, str(tmp_databrickscfg)), \
-         patch(_VALIDATE_AND_SWITCH, return_value=success) as mock_validate:
+    with patch(_CFG_PATH, str(tmp_databrickscfg)), patch(_VALIDATE_AND_SWITCH, return_value=success) as mock_validate:
         result = manage_workspace(action="switch", host=host)
 
     mock_validate.assert_called_once_with(profile=None, host=host)
@@ -159,8 +161,10 @@ def test_switch_with_host(tmp_databrickscfg):
 
 def test_switch_rollback_on_auth_failure(tmp_databrickscfg):
     """action='switch' returns error when validation fails; active workspace is NOT updated."""
-    with patch(_CFG_PATH, str(tmp_databrickscfg)), \
-         patch(_VALIDATE_AND_SWITCH, side_effect=Exception("invalid credentials")):
+    with (
+        patch(_CFG_PATH, str(tmp_databrickscfg)),
+        patch(_VALIDATE_AND_SWITCH, side_effect=Exception("invalid credentials")),
+    ):
         result = manage_workspace(action="switch", profile="prod")
 
     assert "error" in result
@@ -171,8 +175,7 @@ def test_switch_rollback_on_auth_failure(tmp_databrickscfg):
 def test_switch_expired_token_returns_structured_response(tmp_databrickscfg):
     """action='switch' with an expired token returns a structured response with token_expired flag."""
     expired_msg = "default auth: databricks-cli: cannot get access token: refresh token is invalid"
-    with patch(_CFG_PATH, str(tmp_databrickscfg)), \
-         patch(_VALIDATE_AND_SWITCH, side_effect=Exception(expired_msg)):
+    with patch(_CFG_PATH, str(tmp_databrickscfg)), patch(_VALIDATE_AND_SWITCH, side_effect=Exception(expired_msg)):
         result = manage_workspace(action="switch", profile="prod")
 
     assert result.get("token_expired") is True
@@ -199,8 +202,7 @@ def test_login_calls_cli():
     mock_proc.returncode = 0
     success = {"host": "https://adb-999.net", "profile": "adb-999", "username": "u@x.com"}
 
-    with patch(_SUBPROCESS_RUN, return_value=mock_proc) as mock_run, \
-         patch(_VALIDATE_AND_SWITCH, return_value=success):
+    with patch(_SUBPROCESS_RUN, return_value=mock_proc) as mock_run, patch(_VALIDATE_AND_SWITCH, return_value=success):
         result = manage_workspace(action="login", host="https://adb-999.azuredatabricks.net")
 
     args = mock_run.call_args.args[0]
@@ -215,8 +217,7 @@ def test_login_passes_stdin_devnull():
     mock_proc.returncode = 0
     success = {"host": "https://adb-999.net", "profile": "adb-999", "username": "u@x.com"}
 
-    with patch(_SUBPROCESS_RUN, return_value=mock_proc) as mock_run, \
-         patch(_VALIDATE_AND_SWITCH, return_value=success):
+    with patch(_SUBPROCESS_RUN, return_value=mock_proc) as mock_run, patch(_VALIDATE_AND_SWITCH, return_value=success):
         manage_workspace(action="login", host="https://adb-999.azuredatabricks.net")
 
     call_kwargs = mock_run.call_args.kwargs
@@ -261,8 +262,10 @@ def test_login_switches_after_success():
     mock_proc.returncode = 0
     success = {"host": "https://adb-999.net", "profile": "adb-999", "username": "u@x.com"}
 
-    with patch(_SUBPROCESS_RUN, return_value=mock_proc), \
-         patch(_VALIDATE_AND_SWITCH, return_value=success) as mock_validate:
+    with (
+        patch(_SUBPROCESS_RUN, return_value=mock_proc),
+        patch(_VALIDATE_AND_SWITCH, return_value=success) as mock_validate,
+    ):
         result = manage_workspace(action="login", host="https://adb-999.azuredatabricks.net")
 
     mock_validate.assert_called_once()
