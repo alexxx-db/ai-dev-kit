@@ -1209,7 +1209,7 @@ write_mcp_json() {
         msg "${D}Backed up ${path##*/} → ${path##*/}.bak${N}"
     fi
 
-    if [ -f "$path" ] && [ -f "$VENV_PYTHON" ]; then
+    if [ -f "$VENV_PYTHON" ]; then
         "$VENV_PYTHON" -c "
 import json, sys
 try:
@@ -1218,6 +1218,13 @@ except: cfg = {}
 cfg.setdefault('mcpServers', {})['databricks'] = {'command': '$VENV_PYTHON', 'args': ['$MCP_ENTRY'], 'defer_loading': True, 'env': {'DATABRICKS_CONFIG_PROFILE': '$PROFILE'}}
 with open('$path', 'w') as f: json.dump(cfg, f, indent=2); f.write('\n')
 " 2>/dev/null && return
+    fi
+
+    # Fallback: only safe for new files — refuse to overwrite existing files
+    # that may contain other settings (e.g. ~/.claude.json)
+    if [ -f "$path" ]; then
+        warn "Cannot merge MCP config into $path without Python. Add manually."
+        return
     fi
 
     cat > "$path" << EOF
@@ -1410,7 +1417,7 @@ write_mcp_configs() {
     for tool in $TOOLS; do
         case $tool in
             claude)
-                [ "$SCOPE" = "global" ] && write_mcp_json "$HOME/.claude/mcp.json" || write_mcp_json "$base_dir/.mcp.json"
+                [ "$SCOPE" = "global" ] && write_mcp_json "$HOME/.claude.json" || write_mcp_json "$base_dir/.mcp.json"
                 ok "Claude MCP config"
                 # Add version check hook to Claude settings
                 local check_script="$REPO_DIR/.claude-plugin/check_update.sh"
