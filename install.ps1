@@ -76,6 +76,7 @@ $script:ProfileProvided = $false
 $script:SkillsProfile = ""
 $script:UserSkills   = ""
 $script:ListSkills   = $false
+$script:Channel      = if ($env:DEVKIT_CHANNEL) { $env:DEVKIT_CHANNEL } else { "stable" }  # stable or experimental
 
 # Databricks skills (bundled in repo)
 $script:Skills = @(
@@ -219,6 +220,7 @@ while ($i -lt $args.Count) {
         { $_ -in "--skills-profile", "-SkillsProfile" } { $script:SkillsProfile = $args[$i + 1]; $i += 2 }
         { $_ -in "--skills", "-Skills" }       { $script:UserSkills = $args[$i + 1]; $i += 2 }
         { $_ -in "--list-skills", "-ListSkills" } { $script:ListSkills = $true; $i++ }
+        { $_ -in "--experimental", "-Experimental" } { $script:Channel = "experimental"; $i++ }
         { $_ -in "-f", "--force", "-Force" }   { $script:Force = $true; $i++ }
         { $_ -in "-h", "--help", "-Help" } {
             Write-Host "Databricks AI Dev Kit Installer (Windows)"
@@ -233,16 +235,18 @@ while ($i -lt $args.Count) {
             Write-Host "  --mcp-only            Skip skills installation"
             Write-Host "  --mcp-path PATH       Path to MCP server installation"
             Write-Host "  --silent              Silent mode (no output except errors)"
-            Write-Host "  --tools LIST          Comma-separated: claude,cursor,copilot,codex,gemini,antigravity,windsurf"
+            Write-Host "  --tools LIST          Comma-separated: claude,cursor,copilot,codex,gemini,antigravity,windsurf,opencode"
             Write-Host "  --skills-profile LIST Comma-separated profiles: all,data-engineer,analyst,ai-ml-engineer,app-developer"
             Write-Host "  --skills LIST         Comma-separated skill names to install (overrides profile)"
             Write-Host "  --list-skills         List available skills and profiles, then exit"
+            Write-Host "  --experimental        Install from experimental branch (early access features)"
             Write-Host "  -f, --force           Force reinstall"
             Write-Host "  -h, --help            Show this help"
             Write-Host ""
             Write-Host "Environment Variables:"
             Write-Host "  AIDEVKIT_BRANCH       Branch or tag to install (default: latest release)"
             Write-Host "  AIDEVKIT_HOME         Installation directory (default: ~/.ai-dev-kit)"
+            Write-Host "  DEVKIT_CHANNEL        'stable' (default) or 'experimental'"
             Write-Host ""
             Write-Host "Examples:"
             Write-Host "  # Basic installation"
@@ -571,6 +575,7 @@ function Invoke-DetectTools {
                       (Test-Path "$env:LOCALAPPDATA\Programs\Antigravity\Antigravity.exe")
     $hasWindsurf = ($null -ne (Get-Command windsurf -ErrorAction SilentlyContinue)) -or
                    (Test-Path "$env:LOCALAPPDATA\Programs\Windsurf\Windsurf.exe")
+    $hasOpencode = $null -ne (Get-Command opencode -ErrorAction SilentlyContinue)
 
     $claudeState  = $hasClaude;  $claudeHint  = if ($hasClaude)  { "detected" } else { "not found" }
     $cursorState  = $hasCursor;  $cursorHint  = if ($hasCursor)  { "detected" } else { "not found" }
@@ -579,9 +584,10 @@ function Invoke-DetectTools {
     $geminiState  = $hasGemini;  $geminiHint  = if ($hasGemini)  { "detected" } else { "not found" }
     $antigravityState = $hasAntigravity; $antigravityHint = if ($hasAntigravity) { "detected" } else { "not found" }
     $windsurfState = $hasWindsurf; $windsurfHint = if ($hasWindsurf) { "detected" } else { "not found" }
+    $opencodeState = $hasOpencode; $opencodeHint = if ($hasOpencode) { "detected" } else { "not found" }
 
     # If nothing detected, default to claude
-    if (-not $hasClaude -and -not $hasCursor -and -not $hasCodex -and -not $hasCopilot -and -not $hasGemini -and -not $hasAntigravity -and -not $hasWindsurf) {
+    if (-not $hasClaude -and -not $hasCursor -and -not $hasCodex -and -not $hasCopilot -and -not $hasGemini -and -not $hasAntigravity -and -not $hasWindsurf -and -not $hasOpencode) {
         $claudeState = $true
         $claudeHint  = "default"
     }
@@ -599,6 +605,7 @@ function Invoke-DetectTools {
         @{ Label = "Gemini CLI";     Value = "gemini";       State = $geminiState;       Hint = $geminiHint }
         @{ Label = "Antigravity";    Value = "antigravity";  State = $antigravityState;  Hint = $antigravityHint }
         @{ Label = "Windsurf";       Value = "windsurf";     State = $windsurfState;     Hint = $windsurfHint }
+        @{ Label = "OpenCode";       Value = "opencode";     State = $opencodeState;     Hint = $opencodeHint }
     )
 
     $result = Select-Checkbox -Items $items
@@ -1175,6 +1182,13 @@ function Install-Skills {
                     $dirs += Join-Path $BaseDir ".windsurf\skills"
                 }
             }
+            "opencode" {
+                if ($script:Scope -eq "global") {
+                    $dirs += Join-Path $env:USERPROFILE ".config\opencode\skills"
+                } else {
+                    $dirs += Join-Path $BaseDir ".opencode\skills"
+                }
+            }
         }
     }
     $dirs = $dirs | Select-Object -Unique
@@ -1489,6 +1503,65 @@ function Write-GeminiMcpJson {
     }
 }
 
+function Write-OpenCodeJson {
+    param([string]$Path)
+
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    # Backup existing
+    if (Test-Path $Path) {
+        Copy-Item $Path "$Path.bak" -Force
+        Write-Msg "Backed up $(Split-Path $Path -Leaf) -> $(Split-Path $Path -Leaf).bak"
+    }
+
+    # Try to merge with existing config
+    $existing = $null
+    if ((Test-Path $Path) -and (Test-Path $script:VenvPython)) {
+        try {
+            $existing = Get-Content $Path -Raw | ConvertFrom-Json
+        } catch {
+            $existing = $null
+        }
+    }
+
+    if ($existing) {
+        if (-not $existing.'$schema') {
+            $existing | Add-Member -NotePropertyName '$schema' -NotePropertyValue 'https://opencode.ai/config.json' -Force
+        }
+        if (-not $existing.mcp) {
+            $existing | Add-Member -NotePropertyName "mcp" -NotePropertyValue ([PSCustomObject]@{}) -Force
+        }
+        $dbEntry = [PSCustomObject]@{
+            type        = "local"
+            command     = @($script:VenvPython -replace '\\', '/', $script:McpEntry -replace '\\', '/')
+            environment = [PSCustomObject]@{ DATABRICKS_CONFIG_PROFILE = $script:Profile_ }
+            enabled     = $true
+        }
+        $existing.mcp | Add-Member -NotePropertyName "databricks" -NotePropertyValue $dbEntry -Force
+        $existing | ConvertTo-Json -Depth 10 | Set-Content $Path -Encoding UTF8
+    } else {
+        $pythonPath = $script:VenvPython -replace '\\', '/'
+        $entryPath  = $script:McpEntry -replace '\\', '/'
+        $json = @"
+{
+  "`$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "databricks": {
+      "type": "local",
+      "command": ["$pythonPath", "$entryPath"],
+      "environment": {"DATABRICKS_CONFIG_PROFILE": "$($script:Profile_)"},
+      "enabled": true
+    }
+  }
+}
+"@
+        Set-Content -Path $Path -Value $json -Encoding UTF8
+    }
+}
+
 function Write-GeminiMd {
     param([string]$Path)
 
@@ -1608,6 +1681,14 @@ function Write-McpConfigs {
                 Write-McpJson (Join-Path $env:USERPROFILE ".codeium\windsurf\mcp_config.json")
                 Write-Ok "Windsurf MCP config"
             }
+            "opencode" {
+                if ($script:Scope -eq "global") {
+                    Write-OpenCodeJson (Join-Path $env:USERPROFILE ".config\opencode\opencode.json")
+                } else {
+                    Write-OpenCodeJson (Join-Path $BaseDir "opencode.json")
+                }
+                Write-Ok "OpenCode MCP config"
+            }
         }
     }
 }
@@ -1639,6 +1720,9 @@ function Show-Summary {
     Write-Host ""
     Write-Host "Installation complete!" -ForegroundColor Green
     Write-Host "--------------------------------"
+    if ($script:Channel -eq "experimental") {
+        Write-Msg "Channel:  experimental 🧪"
+    }
     Write-Msg "Location: $($script:InstallDir)"
     Write-Msg "Scope:    $($script:Scope)"
     Write-Msg "Tools:    $(($script:Tools -split ' ') -join ', ')"
@@ -1667,10 +1751,23 @@ function Show-Summary {
         Write-Msg "$step. Restart Windsurf to pick up the databricks MCP server (Windsurf -> Settings -> Windsurf Settings -> MCP)"
         $step++
     }
+    if ($script:Tools -match 'opencode') {
+        Write-Msg "$step. Launch OpenCode in your project: opencode"
+        $step++
+    }
     Write-Msg "$step. Open your project in your tool of choice"
     $step++
     Write-Msg "$step. Try: `"List my SQL warehouses`""
     Write-Host ""
+    if ($script:Channel -eq "experimental") {
+        Write-Host "  ============================================================" -ForegroundColor Yellow
+        Write-Host "  🧪 You're using the experimental channel" -ForegroundColor White
+        Write-Host "  ============================================================" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Msg "Thank you for testing early features! Your feedback helps us improve."
+        Write-Msg "Report issues: https://github.com/databricks-solutions/ai-dev-kit/issues"
+        Write-Host ""
+    }
 }
 
 # ─── Scope prompt ─────────────────────────────────────────────
@@ -1769,6 +1866,71 @@ function Invoke-PromptScope {
     $script:Scope = $values[$selected]
 }
 
+# ─── Release channel prompt ───────────────────────────────────
+function Invoke-PromptChannel {
+    # Skip if already set via --experimental flag or env var
+    if ($script:Channel -eq "experimental") { return }
+
+    # Skip in silent mode or non-interactive
+    if ($script:Silent) { return }
+    if (-not (Test-Interactive)) { return }
+
+    Write-Host ""
+    Write-Host "  Select release channel" -ForegroundColor White
+
+    $items = @(
+        @{ Label = "Stable";       Value = "stable";       Selected = $true;  Hint = "Latest stable release (recommended)" }
+        @{ Label = "Experimental"; Value = "experimental"; Selected = $false; Hint = "Early access to new features -- help us test!" }
+    )
+
+    $script:Channel = Select-Radio -Items $items
+
+    # If experimental was selected, re-download and re-exec from experimental branch
+    if ($script:Channel -eq "experimental") {
+        Write-Host ""
+        Write-Host "  ============================================================" -ForegroundColor Yellow
+        Write-Host "  🧪 Experimental Channel" -ForegroundColor White
+        Write-Host "  ============================================================" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  You're about to install the " -NoNewline
+        Write-Host "experimental" -ForegroundColor White -NoNewline
+        Write-Host " version of AI Dev Kit."
+        Write-Host "  This includes early access features that may change or break."
+        Write-Host ""
+        Write-Host "  We'd love your feedback!" -ForegroundColor White
+        Write-Host "  Report issues: https://github.com/databricks-solutions/ai-dev-kit/issues" -ForegroundColor Blue
+        Write-Host "  Discussions:   https://github.com/databricks-solutions/ai-dev-kit/discussions" -ForegroundColor Blue
+        Write-Host ""
+        Write-Host "  Downloading installer from experimental branch..." -ForegroundColor DarkGray
+        Write-Host ""
+
+        # Build argument list preserving current flags
+        $newArgs = @("--experimental")
+        if ($script:Force)               { $newArgs += "--force" }
+        if ($script:UserTools)           { $newArgs += "--tools"; $newArgs += $script:UserTools }
+        if ($script:UserMcpPath)         { $newArgs += "--mcp-path"; $newArgs += $script:UserMcpPath }
+        if ($script:SkillsProfile)       { $newArgs += "--skills-profile"; $newArgs += $script:SkillsProfile }
+        if ($script:UserSkills)          { $newArgs += "--skills"; $newArgs += $script:UserSkills }
+        if ($script:ScopeExplicit -and $script:Scope -eq "global") { $newArgs += "--global" }
+        if ($script:Profile_ -ne "DEFAULT") { $newArgs += "--profile"; $newArgs += $script:Profile_ }
+        if (-not $script:InstallMcp)     { $newArgs += "--skills-only" }
+        if (-not $script:InstallSkills)  { $newArgs += "--mcp-only" }
+
+        # Download experimental installer to a temp file and execute
+        $expUrl = "https://raw.githubusercontent.com/databricks-solutions/ai-dev-kit/experimental/install.ps1"
+        $tempScript = Join-Path $env:TEMP "ai-dev-kit-install-experimental.ps1"
+        try {
+            Invoke-WebRequest -Uri $expUrl -OutFile $tempScript -UseBasicParsing -ErrorAction Stop
+        } catch {
+            Write-Err "Failed to download experimental installer from ${expUrl}: $($_.Exception.Message)"
+        }
+
+        # Execute the experimental installer with preserved args, then exit
+        & $tempScript @newArgs
+        exit $LASTEXITCODE
+    }
+}
+
 # ─── Auth prompt ──────────────────────────────────────────────
 function Invoke-PromptAuth {
     if ($script:Silent) { return }
@@ -1819,6 +1981,9 @@ function Invoke-Main {
         Write-Host "Databricks AI Dev Kit Installer" -ForegroundColor White
         Write-Host "--------------------------------"
     }
+
+    # ── Step 1: Release channel selection (may re-exec from experimental branch) ──
+    Invoke-PromptChannel
 
     # Check dependencies
     Write-Step "Checking prerequisites"
@@ -1872,6 +2037,9 @@ function Invoke-Main {
         Write-Host ""
         Write-Host "  Summary" -ForegroundColor White
         Write-Host "  ------------------------------------"
+        if ($script:Channel -eq "experimental") {
+            Write-Host "  Channel:     " -NoNewline; Write-Host "experimental 🧪" -ForegroundColor Yellow
+        }
         Write-Host "  Tools:       " -NoNewline; Write-Host "$(($script:Tools -split ' ') -join ', ')" -ForegroundColor Green
         Write-Host "  Profile:     " -NoNewline; Write-Host $script:Profile_ -ForegroundColor Green
         Write-Host "  Scope:       " -NoNewline; Write-Host $script:Scope -ForegroundColor Green
@@ -1881,10 +2049,14 @@ function Invoke-Main {
         if ($script:InstallSkills) {
             $skTotal = $script:SelectedSkills.Count + $script:SelectedMlflowSkills.Count + $script:SelectedApxSkills.Count
             if (-not [string]::IsNullOrWhiteSpace($script:UserSkills)) {
-                Write-Host "  Skills:      " -NoNewline; Write-Host "custom selection ($skTotal skills)" -ForegroundColor Green
+                Write-Host "  Skills:      " -NoNewline
+                Write-Host "custom selection ($skTotal skills)" -ForegroundColor Green -NoNewline
+                Write-Host " (will be overwritten, backup your changes first)" -ForegroundColor Yellow
             } else {
                 $profileDisplay = if ([string]::IsNullOrWhiteSpace($script:SkillsProfile)) { "all" } else { $script:SkillsProfile }
-                Write-Host "  Skills:      " -NoNewline; Write-Host "$profileDisplay ($skTotal skills)" -ForegroundColor Green
+                Write-Host "  Skills:      " -NoNewline
+                Write-Host "$profileDisplay ($skTotal skills)" -ForegroundColor Green -NoNewline
+                Write-Host " (will be overwritten, backup your changes first)" -ForegroundColor Yellow
             }
         }
         if ($script:InstallMcp) {
