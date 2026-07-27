@@ -164,8 +164,8 @@ class ConversationStorage:
         return True
       return False
 
-  async def update_session_id(self, conversation_id: str, session_id: str) -> bool:
-    """Update Claude agent session ID for resuming conversations."""
+  async def update_session_id(self, conversation_id: str, session_id: str | None) -> bool:
+    """Set or clear the Claude agent session ID used for resumption."""
     async with session_scope() as session:
       result = await session.execute(
         select(Conversation)
@@ -280,6 +280,36 @@ class ConversationStorage:
         delete(Conversation).where(Conversation.id == conversation_id)
       )
       return True
+
+  async def clear_session(self, conversation_id: str) -> int | None:
+    """Clear Claude session_id and delete messages for a fresh resume.
+
+    Returns deleted message count, or None if conversation not found.
+    """
+    async with session_scope() as session:
+      result = await session.execute(
+        select(Conversation)
+        .join(Project, Conversation.project_id == Project.id)
+        .where(
+          Conversation.id == conversation_id,
+          Conversation.project_id == self.project_id,
+          Project.user_email == self.user_email,
+        )
+      )
+      conversation = result.scalar_one_or_none()
+      if not conversation:
+        return None
+
+      msg_result = await session.execute(
+        select(Message.id).where(Message.conversation_id == conversation_id)
+      )
+      message_ids = list(msg_result.scalars().all())
+      if message_ids:
+        await session.execute(
+          delete(Message).where(Message.conversation_id == conversation_id)
+        )
+      conversation.session_id = None
+      return len(message_ids)
 
   async def add_message(
     self,

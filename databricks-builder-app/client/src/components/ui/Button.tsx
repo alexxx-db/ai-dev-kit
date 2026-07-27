@@ -11,23 +11,23 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         className={cn(
-          'inline-flex items-center justify-center whitespace-nowrap rounded-lg font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]/50 disabled:pointer-events-none disabled:opacity-50',
+          'inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-transparent font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-background)] disabled:cursor-not-allowed disabled:opacity-50',
           // Variants
           variant === 'default' &&
-            'bg-[var(--color-accent-primary)] text-white hover:bg-[var(--color-accent-primary)]/90 shadow-sm hover:shadow-md',
+            'bg-[var(--color-accent-primary)] text-white shadow-[var(--shadow-sm)] hover:bg-[var(--color-accent-secondary)]',
           variant === 'secondary' &&
-            'bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]',
+            'border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] shadow-[var(--shadow-sm)] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-tertiary)]',
           variant === 'ghost' &&
-            'hover:bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)]',
+            'text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)]',
           variant === 'destructive' &&
-            'bg-[var(--color-error)] text-white hover:bg-[var(--color-error)]/90',
+            'bg-[var(--color-destructive)] text-white shadow-[var(--shadow-sm)] hover:bg-[var(--color-destructive-hover)]',
           variant === 'outline' &&
-            'border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)]',
+            'border-[var(--color-border)] bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-[var(--shadow-sm)] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-secondary)]',
           // Sizes
-          size === 'default' && 'h-10 px-4 py-2 text-sm',
-          size === 'sm' && 'h-9 px-3 text-xs',
-          size === 'lg' && 'h-11 px-8 text-base',
-          size === 'icon' && 'h-10 w-10',
+          size === 'default' && 'h-9 px-3.5 text-sm',
+          size === 'sm' && 'h-8 px-2.5 text-xs',
+          size === 'lg' && 'h-10 px-5 text-sm',
+          size === 'icon' && 'h-9 w-9',
           className
         )}
         ref={ref}

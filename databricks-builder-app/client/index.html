@@ -7,6 +7,35 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet" />
+    <script>
+      (() => {
+        let preference = "system";
+
+        try {
+          const storedTheme = localStorage.getItem("builder-app-theme");
+          if (["light", "dark", "system"].includes(storedTheme)) {
+            preference = storedTheme;
+          }
+        } catch {
+          // System preference remains available when storage is blocked.
+        }
+
+        const resolvedTheme =
+          preference === "system" &&
+          typeof matchMedia === "function" &&
+          matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : preference === "dark"
+              ? "dark"
+              : "light";
+
+        document.documentElement.classList.toggle(
+          "dark",
+          resolvedTheme === "dark",
+        );
+        document.documentElement.style.colorScheme = resolvedTheme;
+      })();
+    </script>
     <title>Databricks AI Dev Kit</title>
   </head>
   <body>

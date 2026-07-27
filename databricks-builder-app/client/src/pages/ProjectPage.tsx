@@ -6,11 +6,13 @@ import {
   Check,
   ChevronDown,
   ClipboardCopy,
+  FileCode2,
   ExternalLink,
   Loader2,
   Settings2,
   Square,
   Sparkles,
+  Terminal,
   Wrench,
   X,
 } from 'lucide-react';
@@ -59,36 +61,66 @@ function DatabricksLogo({ className }: { className?: string }) {
   );
 }
 
+function formatToolName(tool: string) {
+  return tool.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getToolKind(tool?: string) {
+  const normalized = tool?.toLowerCase() || '';
+  if (normalized.includes('bash') || normalized.includes('shell') || normalized.includes('terminal')) {
+    return { label: 'Bash', Icon: Terminal };
+  }
+  if (
+    normalized.includes('read') ||
+    normalized.includes('write') ||
+    normalized.includes('edit') ||
+    normalized.includes('file') ||
+    normalized.includes('glob')
+  ) {
+    return { label: 'File', Icon: FileCode2 };
+  }
+  return { label: normalized.includes('skill') ? 'Skill' : 'Tool', Icon: Wrench };
+}
+
 // Expandable tools list for a message
 function ToolsUsedBadge({ tools }: { tools: string[] }) {
   const [expanded, setExpanded] = useState(false);
 
   if (tools.length === 0) return null;
 
-  // Deduplicate and clean tool names
-  const uniqueTools = [...new Set(tools.map(t => t.replace('mcp__databricks__', '').replace(/_/g, ' ')))];
+  const uniqueTools = [...new Set(tools)];
 
   return (
-    <div className="mt-2">
+    <div className="mt-3 border-l border-[var(--color-border-strong)] pl-3">
       <button
+        type="button"
         onClick={() => setExpanded(!expanded)}
-        className="inline-flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+        aria-expanded={expanded}
+        className="inline-flex items-center gap-1.5 rounded text-[11px] font-medium text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)]"
       >
         <Wrench className="h-3 w-3" />
-        <span>{uniqueTools.length} tool{uniqueTools.length !== 1 ? 's' : ''} used</span>
+        <span>{uniqueTools.length} operation{uniqueTools.length !== 1 ? 's' : ''}</span>
+        <span className="text-[var(--color-success)]">Completed</span>
         <ChevronDown className={cn('h-3 w-3 transition-transform', expanded && 'rotate-180')} />
       </button>
       {expanded && (
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {uniqueTools.map((tool, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--color-bg-secondary)] border border-[var(--color-border)]/40 text-[11px] text-[var(--color-text-muted)] capitalize"
-            >
-              <Wrench className="h-2.5 w-2.5" />
-              {tool}
-            </span>
-          ))}
+        <div className="mt-2 space-y-1">
+          {uniqueTools.map((tool) => {
+            const { label, Icon } = getToolKind(tool);
+            return (
+              <div
+                key={tool}
+                className="flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]"
+              >
+                <span className="flex h-5 w-5 items-center justify-center rounded border border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
+                  <Icon className="h-3 w-3 text-[var(--color-text-muted)]" />
+                </span>
+                <span className="font-medium text-[var(--color-text-muted)]">{label}</span>
+                <span className="truncate">{formatToolName(tool)}</span>
+                <Check className="ml-auto h-3 w-3 text-[var(--color-success)]" />
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -105,7 +137,8 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className="absolute top-2 right-2 p-1.5 rounded-md bg-[var(--color-bg-secondary)]/80 border border-[var(--color-border)]/50 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)] opacity-0 group-hover/code:opacity-100 transition-all"
+      className="absolute right-2 top-2 rounded-md border border-[var(--color-code-border)] bg-[var(--color-bg-elevated)] p-1.5 text-[var(--color-text-muted)] opacity-0 shadow-[var(--shadow-sm)] transition-[color,background-color,opacity] hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text-primary)] focus-visible:opacity-100 group-hover/code:opacity-100"
+      aria-label={copied ? 'Copied code' : 'Copy code'}
       title={copied ? 'Copied!' : 'Copy code'}
     >
       {copied ? <Check className="h-3.5 w-3.5 text-[var(--color-success)]" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
@@ -113,35 +146,81 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+function MessageCopyControl({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-[var(--color-text-muted)] opacity-0 transition-[color,background-color,opacity] hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text-primary)] focus-visible:opacity-100 group-hover/msg:opacity-100 group-focus-within/msg:opacity-100"
+      aria-label={copied ? 'Message copied' : 'Copy message'}
+      title={copied ? 'Copied' : 'Copy message'}
+    >
+      {copied ? <Check className="h-3 w-3 text-[var(--color-success)]" /> : <ClipboardCopy className="h-3 w-3" />}
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  );
+}
+
 // Activity indicator - shows current tool with animated dots
 function ActivitySection({
   items,
+  isStreaming,
 }: {
   items: ActivityItem[];
   isStreaming: boolean;
 }) {
   if (items.length === 0) return null;
 
-  const currentTool = [...items].reverse().find((item) => item.type === 'tool_use');
-  if (!currentTool) return null;
-
-  const toolName = currentTool.toolName?.replace('mcp__databricks__', '').replace(/_/g, ' ') || 'working';
+  const toolUses = items.filter((item) => item.type === 'tool_use');
+  if (toolUses.length === 0) return null;
+  const visibleTools = toolUses.slice(-4);
 
   return (
-    <div className="flex items-start gap-3 max-w-3xl">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-accent-primary)] to-[var(--color-accent-secondary)] flex items-center justify-center shadow-sm mt-0.5">
-        <DatabricksLogo className="h-4 w-4 text-white" />
+    <div className="mb-5 ml-9 max-w-2xl rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2 shadow-[var(--shadow-sm)]">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--color-text-muted)]">
+          Execution
+        </span>
+        <span className="flex items-center gap-1.5 text-[10px] font-medium text-[var(--color-info)]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-info)] animate-pulse" />
+          Running
+        </span>
       </div>
-      <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--color-bg-secondary)]/60 border border-[var(--color-border)]/30">
-        <Wrench className="h-3.5 w-3.5 text-[var(--color-accent-primary)] animate-pulse" />
-        <span className="text-xs text-[var(--color-text-muted)] capitalize">
-          {toolName}
-        </span>
-        <span className="flex gap-0.5">
-          <span className="w-1 h-1 rounded-full bg-[var(--color-text-muted)] animate-bounce" style={{ animationDelay: '0ms' }} />
-          <span className="w-1 h-1 rounded-full bg-[var(--color-text-muted)] animate-bounce" style={{ animationDelay: '150ms' }} />
-          <span className="w-1 h-1 rounded-full bg-[var(--color-text-muted)] animate-bounce" style={{ animationDelay: '300ms' }} />
-        </span>
+      <div className="space-y-0.5">
+        {visibleTools.map((item, index) => {
+          const result = items.find((candidate) => candidate.id === `result-${item.id}`);
+          const running = isStreaming && !result && index === visibleTools.length - 1;
+          const { label, Icon } = getToolKind(item.toolName);
+          return (
+            <div key={item.id} className="relative flex min-w-0 items-center gap-2 py-1 text-xs">
+              <span className={cn(
+                'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border bg-[var(--color-bg-elevated)]',
+                result?.isError ? 'border-[var(--color-error)]/40 text-[var(--color-error)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+              )}>
+                <Icon className={cn('h-3 w-3', running && 'animate-pulse')} />
+              </span>
+              <span className="w-8 flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+                {label}
+              </span>
+              <span className="truncate text-[var(--color-text-secondary)]">
+                {formatToolName(item.toolName || 'Working')}
+              </span>
+              {result?.isError ? (
+                <span className="ml-auto text-[10px] font-medium text-[var(--color-error)]">Error</span>
+              ) : result ? (
+                <Check className="ml-auto h-3 w-3 text-[var(--color-success)]" />
+              ) : (
+                <Loader2 className="ml-auto h-3 w-3 animate-spin text-[var(--color-info)]" />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -178,16 +257,18 @@ function ResourceDropdown<T extends { state: string }>({
 
   return (
     <div ref={ref} className="relative">
-      <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">{label}</label>
+      <label className="text-[11px] font-semibold text-[var(--color-text-secondary)]">{label}</label>
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="mt-1.5 w-full flex items-center justify-between h-10 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-sm hover:border-[var(--color-accent-primary)]/40 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-primary)]/30 transition-colors"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="mt-1 flex h-9 w-full items-center justify-between rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-2.5 text-xs shadow-[var(--shadow-sm)] transition-colors hover:border-[var(--color-border-strong)]"
       >
         <div className="flex items-center gap-2 min-w-0">
           {selected && (
-            <span className={cn('w-2.5 h-2.5 rounded-full flex-shrink-0 ring-2 ring-offset-1 ring-offset-[var(--color-background)]',
-              selected.state === 'RUNNING' ? 'bg-[var(--color-success)] ring-[var(--color-success)]/30' : 'bg-[var(--color-text-muted)]/50 ring-[var(--color-text-muted)]/20'
+            <span className={cn('h-1.5 w-1.5 flex-shrink-0 rounded-full',
+              selected.state === 'RUNNING' ? 'bg-[var(--color-success)]' : 'bg-[var(--color-text-muted)]'
             )} />
           )}
           <span className={cn('truncate', selected ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)]')}>
@@ -197,7 +278,7 @@ function ResourceDropdown<T extends { state: string }>({
         <ChevronDown className={cn('h-4 w-4 text-[var(--color-text-muted)] transition-transform flex-shrink-0', open && 'rotate-180')} />
       </button>
       {open && (
-        <div className="absolute left-0 right-0 top-full mt-1 max-h-52 overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] shadow-lg z-[60]">
+        <div role="listbox" className="absolute left-0 right-0 top-full z-[60] mt-1 max-h-52 overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-1 shadow-[var(--shadow-md)]">
           {items.map((item) => {
             const id = String(item[idKey]);
             const name = String(item[nameKey] || '');
@@ -205,18 +286,21 @@ function ResourceDropdown<T extends { state: string }>({
             return (
               <button
                 key={id}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
                 onClick={() => { onSelect(id); setOpen(false); }}
                 className={cn(
-                  'w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left transition-colors',
-                  isSelected ? 'bg-[var(--color-accent-primary)]/5 text-[var(--color-accent-primary)]' : 'text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)]'
+                  'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
+                  isSelected ? 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-heading)]' : 'text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)]'
                 )}
               >
-                <span className={cn('w-2.5 h-2.5 rounded-full flex-shrink-0 ring-2 ring-offset-1 ring-offset-[var(--color-bg-elevated)]',
-                  item.state === 'RUNNING' ? 'bg-[var(--color-success)] ring-[var(--color-success)]/30' : 'bg-[var(--color-text-muted)]/50 ring-[var(--color-text-muted)]/20'
+                <span className={cn('h-1.5 w-1.5 flex-shrink-0 rounded-full',
+                  item.state === 'RUNNING' ? 'bg-[var(--color-success)]' : 'bg-[var(--color-text-muted)]'
                 )} />
                 <div className="flex-1 min-w-0">
                   <span className="truncate block">{name}</span>
-                  <span className={cn('text-[10px] uppercase tracking-wider', item.state === 'RUNNING' ? 'text-[var(--color-success)]' : 'text-[var(--color-text-muted)]')}>
+                  <span className={cn('text-[9px] uppercase tracking-wider', item.state === 'RUNNING' ? 'text-[var(--color-success)]' : 'text-[var(--color-text-muted)]')}>
                     {item.state}
                   </span>
                 </div>
@@ -271,39 +355,43 @@ function ConfigPanel({
   if (!isOpen) return null;
 
   return (
-    <div className="absolute right-0 top-full mt-2 w-96 rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-elevated)] shadow-2xl z-50 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-[var(--color-border)]/50 bg-[var(--color-bg-secondary)]/30">
-        <h3 className="text-sm font-semibold text-[var(--color-text-heading)]">Configuration</h3>
-        <button onClick={onClose} className="p-1 rounded-md hover:bg-[var(--color-bg-secondary)] transition-colors">
+    <div className="absolute right-0 top-full z-50 mt-2 w-[min(23rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-elevated)] shadow-[var(--shadow-lg)]">
+      <div className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-2.5">
+        <div>
+          <h3 className="text-xs font-semibold text-[var(--color-text-heading)]">Project context</h3>
+          <p className="mt-0.5 text-[10px] text-[var(--color-text-muted)]">Passed to every agent run</p>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close configuration" className="rounded-md p-1.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]">
           <X className="h-4 w-4 text-[var(--color-text-muted)]" />
         </button>
       </div>
-      <div className="p-5 space-y-5">
-        {/* Catalog & Schema - stacked for more room */}
+      <div className="space-y-3.5 p-4">
         <div>
-          <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Catalog / Schema</label>
-          <div className="mt-1.5 flex items-center gap-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] overflow-hidden focus-within:ring-2 focus-within:ring-[var(--color-accent-primary)]/30 focus-within:border-[var(--color-accent-primary)]/50">
+          <label className="text-[11px] font-semibold text-[var(--color-text-secondary)]">Catalog and schema</label>
+          <div className="mt-1 flex items-center overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] shadow-[var(--shadow-sm)] focus-within:border-[var(--color-focus)] focus-within:ring-2 focus-within:ring-[var(--color-focus)]/20">
             <input
               type="text"
               value={defaultCatalog}
               onChange={(e) => setDefaultCatalog(e.target.value)}
               placeholder="catalog"
-              className="flex-1 h-10 px-3 bg-transparent text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]/50 focus:outline-none min-w-0"
+              aria-label="Default catalog"
+              className="h-9 min-w-0 flex-1 bg-transparent px-2.5 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none"
             />
-            <span className="text-[var(--color-text-muted)] font-bold text-lg leading-none select-none">.</span>
+            <span className="select-none text-sm text-[var(--color-text-muted)]">/</span>
             <input
               type="text"
               value={defaultSchema}
               onChange={(e) => setDefaultSchema(e.target.value)}
               placeholder="schema"
-              className="flex-1 h-10 px-3 bg-transparent text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]/50 focus:outline-none min-w-0"
+              aria-label="Default schema"
+              className="h-9 min-w-0 flex-1 bg-transparent px-2.5 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none"
             />
             {workspaceUrl && defaultCatalog && defaultSchema && (
               <a
                 href={`${workspaceUrl}/explore/data/${defaultCatalog}/${defaultSchema}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center h-10 w-10 flex-shrink-0 border-l border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent-primary)] hover:bg-[var(--color-bg-secondary)]/50 transition-colors"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center border-l border-[var(--color-border)] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-accent-primary)]"
                 title="Open in Catalog Explorer"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
@@ -312,51 +400,48 @@ function ConfigPanel({
           </div>
         </div>
 
-        {/* Cluster - custom dropdown */}
-        {clusters.length > 0 && (
-          <ResourceDropdown
-            label="Cluster"
-            items={clusters}
-            selectedId={selectedClusterId}
-            onSelect={setSelectedClusterId}
-            nameKey="cluster_name"
-            idKey="cluster_id"
-          />
-        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          {clusters.length > 0 && (
+            <ResourceDropdown
+              label="Cluster"
+              items={clusters}
+              selectedId={selectedClusterId}
+              onSelect={setSelectedClusterId}
+              nameKey="cluster_name"
+              idKey="cluster_id"
+            />
+          )}
+          {warehouses.length > 0 && (
+            <ResourceDropdown
+              label="SQL warehouse"
+              items={warehouses}
+              selectedId={selectedWarehouseId}
+              onSelect={setSelectedWarehouseId}
+              nameKey="warehouse_name"
+              idKey="warehouse_id"
+            />
+          )}
+        </div>
 
-        {/* Warehouse - custom dropdown */}
-        {warehouses.length > 0 && (
-          <ResourceDropdown
-            label="SQL Warehouse"
-            items={warehouses}
-            selectedId={selectedWarehouseId}
-            onSelect={setSelectedWarehouseId}
-            nameKey="warehouse_name"
-            idKey="warehouse_id"
-          />
-        )}
-
-        {/* Workspace Folder */}
         <div>
-          <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Workspace Folder</label>
+          <label className="text-[11px] font-semibold text-[var(--color-text-secondary)]">Workspace folder</label>
           <input
             type="text"
             value={workspaceFolder}
             onChange={(e) => setWorkspaceFolder(e.target.value)}
             placeholder="/Workspace/Users/..."
-            className="mt-1.5 w-full h-10 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-primary)]/30 focus:border-[var(--color-accent-primary)]/50"
+            className="mt-1 h-9 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-2.5 text-xs text-[var(--color-text-primary)] shadow-[var(--shadow-sm)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-focus)] focus:outline-none focus:ring-2 focus:ring-[var(--color-focus)]/20"
           />
         </div>
 
-        {/* MLflow Experiment */}
         <div>
-          <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">MLflow Experiment</label>
+          <label className="text-[11px] font-semibold text-[var(--color-text-secondary)]">MLflow experiment</label>
           <input
             type="text"
             value={mlflowExperimentName}
             onChange={(e) => setMlflowExperimentName(e.target.value)}
             placeholder="Experiment ID or name"
-            className="mt-1.5 w-full h-10 px-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-primary)]/30 focus:border-[var(--color-accent-primary)]/50"
+            className="mt-1 h-9 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-2.5 text-xs text-[var(--color-text-primary)] shadow-[var(--shadow-sm)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-focus)] focus:outline-none focus:ring-2 focus:ring-[var(--color-focus)]/20"
           />
         </div>
       </div>
@@ -591,6 +676,24 @@ export default function ProjectPage() {
             onError: (error) => {
               console.error('Reconnect error:', error);
               toast.error('Failed to reconnect to execution');
+              delete allStreamsRef.current[reconConvId];
+              setStreamingConvIds(prev => prev.filter(id => id !== reconConvId));
+              if (currentConvIdRef.current === reconConvId) {
+                setIsReconnecting(false);
+                setActiveExecutionId(null);
+                setStreamingText('');
+                setActivityItems([]);
+                setTodos([]);
+              }
+              // Reload saved messages — do not leave the UI stuck reconnecting.
+              fetchConversation(projectId, reconConvId)
+                .then((conv) => {
+                  if (currentConvIdRef.current === reconConvId) {
+                    setCurrentConversation(conv);
+                    setMessages(conv.messages || []);
+                  }
+                })
+                .catch(() => undefined);
             },
             onDone: async () => {
               delete allStreamsRef.current[reconConvId];
@@ -1116,8 +1219,8 @@ export default function ProjectPage() {
       };
       const text = getTextContent(children);
       return (
-        <div className="relative group/code my-3">
-          <pre className="!bg-[var(--color-bg-tertiary)] !rounded-lg !border !border-[var(--color-border)]/50 !p-4 overflow-x-auto">
+        <div className="group/code relative my-3">
+          <pre className="overflow-x-auto !rounded-lg !border !border-[var(--color-code-border)] !bg-[var(--color-code-bg)] !p-4 !text-[var(--color-text-primary)]">
             {children}
           </pre>
           <CopyButton text={text} />
@@ -1128,13 +1231,13 @@ export default function ProjectPage() {
       // Inline code (no language class)
       if (!className) {
         return (
-          <code className="px-1.5 py-0.5 rounded-md bg-[var(--color-bg-tertiary)] border border-[var(--color-border)]/30 text-[0.875em] font-mono">
+          <code className="rounded border border-[var(--color-code-border)] bg-[var(--color-code-bg)] px-1.5 py-0.5 font-mono text-[0.875em] text-[var(--color-text-primary)]">
             {children}
           </code>
         );
       }
       // Block code inside pre
-      return <code className={cn(className, 'font-mono text-[12px]')}>{children}</code>;
+      return <code className={cn(className, 'font-mono text-[12px] text-[var(--color-text-primary)]')}>{children}</code>;
     },
     table: ({ children }: { children?: React.ReactNode }) => (
       <div className="my-3 overflow-x-auto rounded-lg border border-[var(--color-border)]/50">
@@ -1198,16 +1301,21 @@ export default function ProjectPage() {
 
   return (
     <MainLayout projectName={project?.name} sidebar={sidebar}>
-      <div className="flex flex-1 flex-col h-full">
+      <div className="flex h-full min-w-0 flex-1 flex-col bg-[var(--color-canvas)]">
         {/* Chat Header */}
-        <div className="flex h-14 items-center justify-between border-b border-[var(--color-border)]/60 px-6 bg-[var(--color-bg-secondary)]/20">
+        <div className="flex h-14 flex-shrink-0 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 sm:px-6">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--color-accent-primary)]/10 to-[var(--color-accent-secondary)]/10 flex items-center justify-center">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] shadow-[var(--shadow-sm)]">
               <Sparkles className="h-4 w-4 text-[var(--color-accent-primary)]" />
             </div>
-            <h2 className="font-semibold text-[15px] text-[var(--color-text-heading)] truncate">
-              {currentConversation?.title || 'New Chat'}
-            </h2>
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-semibold text-[var(--color-text-heading)]">
+                {currentConversation?.title || 'New Chat'}
+              </h2>
+              <p className="text-[10px] text-[var(--color-text-muted)]">
+                {isStreamingHere ? 'Agent is working' : 'Builder agent'}
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2.5">
             {/* Config summary chips */}
@@ -1215,7 +1323,7 @@ export default function ProjectPage() {
               {configChips.map((chip, i) => (
                 <span
                   key={i}
-                  className={cn('text-[11px] font-medium px-2.5 py-1 rounded-lg bg-[var(--color-bg-secondary)] border border-[var(--color-border)]/40 truncate max-w-[160px]', chip.color)}
+                  className={cn('max-w-[150px] truncate rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-2 py-1 text-[10px] font-medium', chip.color)}
                 >
                   {chip.label}
                 </span>
@@ -1224,12 +1332,15 @@ export default function ProjectPage() {
             {/* Settings button */}
             <div className="relative" ref={configPanelRef}>
               <button
+                type="button"
                 onClick={() => setConfigPanelOpen(!configPanelOpen)}
+                aria-expanded={configPanelOpen}
+                aria-label="Project configuration"
                 className={cn(
-                  'flex items-center justify-center h-9 w-9 rounded-lg transition-all',
+                  'flex h-8 w-8 items-center justify-center rounded-md border transition-colors',
                   configPanelOpen
-                    ? 'bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)] ring-2 ring-[var(--color-accent-primary)]/20'
-                    : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)]'
+                    ? 'border-[var(--color-accent-primary)] bg-[var(--color-bg-tertiary)] text-[var(--color-accent-primary)]'
+                    : 'border-[var(--color-border)] bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)] hover:border-[var(--color-border-strong)] hover:text-[var(--color-text-primary)]'
                 )}
                 title="Configuration"
               >
@@ -1259,27 +1370,22 @@ export default function ProjectPage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {messages.length === 0 && !isStreamingHere ? (
             /* Empty State */
-            <div className="flex h-full items-center justify-center px-6">
+            <div className="flex min-h-full items-center justify-center px-5 py-12 sm:px-8">
               <div className="text-center max-w-xl w-full">
-                {/* Decorative gradient orb */}
-                <div className="relative inline-flex items-center justify-center w-20 h-20 mb-6">
-                  <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[var(--color-accent-primary)]/15 to-[var(--color-accent-secondary)]/10 blur-md" />
-                  <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--color-accent-primary)]/10 to-[var(--color-accent-secondary)]/5 border border-[var(--color-accent-primary)]/10 flex items-center justify-center">
-                    <Sparkles className="h-8 w-8 text-[var(--color-accent-primary)]" />
-                  </div>
+                <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-bg-elevated)] shadow-[var(--shadow-sm)]">
+                  <Sparkles className="h-5 w-5 text-[var(--color-accent-primary)]" />
                 </div>
-                <h3 className="text-2xl font-bold text-[var(--color-text-heading)]">
+                <h3 className="text-xl font-semibold tracking-tight text-[var(--color-text-heading)] sm:text-2xl">
                   What can I help you build?
                 </h3>
-                <p className="mt-3 text-sm text-[var(--color-text-muted)] max-w-md mx-auto leading-relaxed">
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--color-text-muted)]">
                   Build data pipelines, generate synthetic data, create dashboards, and more on Databricks.
                 </p>
 
-                {/* Example prompts - 2x2 grid */}
-                <div className="mt-10 grid grid-cols-2 gap-3 text-left">
+                <div className="mt-8 grid gap-2 text-left sm:grid-cols-2">
                   {[
                     { title: 'Generate synthetic data', desc: 'Realistic test datasets with customers, orders, and tickets', prompt: 'Generate synthetic customer data with orders and support tickets' },
                     { title: 'Build a data pipeline', desc: 'ETL workflows with medallion architecture', prompt: 'Create a data pipeline to transform raw data into bronze, silver, and gold layers' },
@@ -1289,10 +1395,10 @@ export default function ProjectPage() {
                     <button
                       key={item.title}
                       onClick={() => setInput(item.prompt)}
-                      className="group p-4 rounded-xl border border-[var(--color-border)]/50 bg-[var(--color-background)] hover:border-[var(--color-accent-primary)]/30 hover:shadow-lg hover:shadow-[var(--color-accent-primary)]/5 hover:-translate-y-0.5 text-left transition-all duration-200"
+                      className="group rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-3.5 text-left shadow-[var(--shadow-sm)] transition-[border-color,background-color] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-secondary)]"
                     >
-                      <span className="text-sm font-semibold text-[var(--color-text-heading)] group-hover:text-[var(--color-accent-primary)] transition-colors">{item.title}</span>
-                      <p className="text-xs text-[var(--color-text-muted)] mt-1.5 leading-relaxed">{item.desc}</p>
+                      <span className="text-xs font-semibold text-[var(--color-text-heading)] transition-colors group-hover:text-[var(--color-accent-primary)]">{item.title}</span>
+                      <p className="mt-1 text-xs leading-5 text-[var(--color-text-muted)]">{item.desc}</p>
                     </button>
                   ))}
                 </div>
@@ -1300,25 +1406,33 @@ export default function ProjectPage() {
             </div>
           ) : (
             /* Message Thread */
-            <div className="mx-auto max-w-3xl px-6 py-8 space-y-1">
+            <div className="mx-auto max-w-[52rem] space-y-1 px-4 py-7 sm:px-7 sm:py-9">
               {messages.map((message) => (
                 <div key={message.id}>
                   {message.role === 'assistant' ? (
-                    /* Assistant message - left aligned with Databricks avatar */
-                    <div className="flex items-start gap-3 group/msg mb-4">
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-accent-primary)] to-[var(--color-accent-secondary)] flex items-center justify-center shadow-sm shadow-[var(--color-accent-primary)]/20 mt-0.5">
-                        <DatabricksLogo className="h-4 w-4 text-white" />
+                    <div className="group/msg mb-6 flex items-start gap-3">
+                      <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] shadow-[var(--shadow-sm)]">
+                        <DatabricksLogo className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
                       </div>
                       <div className={cn('flex-1 min-w-0', message.is_error && 'text-[var(--color-error)]')}>
-                        <div className="mb-1 flex items-center gap-2">
-                          <span className="text-xs font-semibold text-[var(--color-text-heading)]">Assistant</span>
+                        <div className="mb-1.5 flex min-h-5 items-center gap-2">
+                          <span className="text-[11px] font-semibold text-[var(--color-text-heading)]">Builder</span>
+                          <span className={cn(
+                            'rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide',
+                            message.is_error
+                              ? 'bg-[var(--color-error)]/10 text-[var(--color-error)]'
+                              : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]'
+                          )}>
+                            {message.is_error ? 'Error' : 'Complete'}
+                          </span>
                           {message.timestamp && (
-                            <span className="text-[10px] text-[var(--color-text-muted)]/60 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+                            <span className="text-[10px] text-[var(--color-text-muted)]">
                               {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           )}
+                          <MessageCopyControl text={message.content} />
                         </div>
-                        <div className="prose prose-xs max-w-none text-[var(--color-text-primary)] text-[14px] leading-[1.7]">
+                        <div className="prose prose-xs max-w-none text-[14px] leading-7 text-[var(--color-text-primary)]">
                           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                             {message.content}
                           </ReactMarkdown>
@@ -1327,18 +1441,19 @@ export default function ProjectPage() {
                       </div>
                     </div>
                   ) : (
-                    /* User message - right aligned like iMessage */
-                    <div className="flex justify-end mb-4 group/msg">
-                      <div className="max-w-[80%]">
-                        <div className="mb-1 flex items-center justify-end gap-2">
+                    <div className="group/msg mb-6 flex justify-end">
+                      <div className="max-w-[88%] sm:max-w-[76%]">
+                        <div className="mb-1 flex min-h-5 items-center justify-end gap-1">
+                          <MessageCopyControl text={message.content} />
                           {message.timestamp && (
-                            <span className="text-[10px] text-[var(--color-text-muted)]/60 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+                            <span className="text-[10px] text-[var(--color-text-muted)]">
                               {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           )}
+                          <span className="text-[11px] font-semibold text-[var(--color-text-secondary)]">You</span>
                         </div>
-                        <div className="rounded-2xl rounded-br-md bg-[var(--color-accent-primary)] text-white px-4 py-2.5 shadow-sm">
-                          <p className="whitespace-pre-wrap text-[14px] leading-[1.6]">{message.content}</p>
+                        <div className="rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-bg-secondary)] px-4 py-3 shadow-[var(--shadow-sm)]">
+                          <p className="whitespace-pre-wrap text-[14px] leading-6 text-[var(--color-text-primary)]">{message.content}</p>
                         </div>
                       </div>
                     </div>
@@ -1348,17 +1463,19 @@ export default function ProjectPage() {
 
               {/* Streaming response */}
               {isStreamingHere && streamingText && (
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-accent-primary)] to-[var(--color-accent-secondary)] flex items-center justify-center shadow-sm shadow-[var(--color-accent-primary)]/20 mt-0.5">
-                    <DatabricksLogo className="h-4 w-4 text-white" />
+                <div className="mb-5 flex items-start gap-3">
+                  <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] shadow-[var(--shadow-sm)]">
+                    <DatabricksLogo className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="mb-1">
-                      <span className="text-xs font-semibold text-[var(--color-text-heading)]">
-                        Assistant
+                    <div className="mb-1.5 flex items-center gap-2">
+                      <span className="text-[11px] font-semibold text-[var(--color-text-heading)]">Builder</span>
+                      <span className="inline-flex items-center gap-1.5 rounded bg-[var(--color-info)]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--color-info)]">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--color-info)]" />
+                        Streaming
                       </span>
                     </div>
-                    <div className="prose prose-xs max-w-none text-[var(--color-text-primary)] text-[14px] leading-[1.7]">
+                    <div className="prose prose-xs max-w-none text-[14px] leading-7 text-[var(--color-text-primary)]">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                         {streamingText}
                       </ReactMarkdown>
@@ -1374,14 +1491,16 @@ export default function ProjectPage() {
 
               {/* Loader */}
               {isStreamingHere && !streamingText && (
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-accent-primary)] to-[var(--color-accent-secondary)] flex items-center justify-center shadow-sm shadow-[var(--color-accent-primary)]/20 mt-0.5">
-                    <DatabricksLogo className="h-4 w-4 text-white" />
+                <div className="mb-5 flex items-start gap-3">
+                  <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] shadow-[var(--shadow-sm)]">
+                    <DatabricksLogo className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
                   </div>
                   <div className="flex-1">
-                    <div className="mb-1">
-                      <span className="text-xs font-semibold text-[var(--color-text-heading)]">
-                        Assistant
+                    <div className="mb-1.5 flex items-center gap-2">
+                      <span className="text-[11px] font-semibold text-[var(--color-text-heading)]">Builder</span>
+                      <span className="inline-flex items-center gap-1.5 rounded bg-[var(--color-info)]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--color-info)]">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--color-info)]" />
+                        Working
                       </span>
                     </div>
                     {isReconnecting ? (
@@ -1402,9 +1521,12 @@ export default function ProjectPage() {
         </div>
 
         {/* Input Area */}
-        <div className="px-6 pb-5 pt-3">
-          <div className="mx-auto max-w-3xl">
-            <div className="relative rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] shadow-sm shadow-black/[0.03] focus-within:border-[var(--color-accent-primary)]/40 focus-within:shadow-lg focus-within:shadow-[var(--color-accent-primary)]/[0.06] transition-all duration-300">
+        <div
+          className="flex-shrink-0 border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)]/95 px-3 pt-3 backdrop-blur sm:px-6"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        >
+          <div className="mx-auto max-w-[52rem]">
+            <div className="relative overflow-hidden rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-bg-elevated)] shadow-[var(--shadow-md)] transition-[border-color,box-shadow] focus-within:border-[var(--color-focus)] focus-within:ring-2 focus-within:ring-[var(--color-focus)]/20 focus-within:ring-offset-1 focus-within:ring-offset-[var(--color-bg-secondary)]">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -1412,35 +1534,60 @@ export default function ProjectPage() {
                 onKeyDown={handleKeyDown}
                 placeholder="Message the assistant..."
                 rows={1}
-                className="w-full resize-none bg-transparent px-5 pt-4 pb-14 text-[14px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]/50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Message the builder agent"
+                className="w-full resize-none bg-transparent px-4 pb-12 pt-3.5 text-[14px] leading-6 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 sm:px-5"
                 style={{ maxHeight: 200 }}
                 disabled={isStreamingHere}
               />
-              <div className="absolute bottom-3 left-5 right-3 flex items-center justify-between">
-                <span className="text-[11px] text-[var(--color-text-muted)]/40 select-none">
-                  <kbd className="px-1.5 py-0.5 rounded border border-[var(--color-border)]/40 bg-[var(--color-bg-secondary)]/50 text-[10px] font-mono">Enter</kbd> to send
-                </span>
+              <div className="absolute bottom-2 left-3 right-2 flex items-center justify-between gap-3 sm:left-4">
+                <div className="flex min-w-0 items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
+                  <span className={cn(
+                    'flex flex-shrink-0 items-center gap-1.5 font-medium',
+                    isStreamingHere ? 'text-[var(--color-info)]' : 'text-[var(--color-text-muted)]'
+                  )}>
+                    <span className={cn(
+                      'h-1.5 w-1.5 rounded-full',
+                      isStreamingHere ? 'animate-pulse bg-[var(--color-info)]' : 'bg-[var(--color-success)]'
+                    )} />
+                    {isStreamingHere ? 'Running' : 'Ready'}
+                  </span>
+                  {configChips[0] && (
+                    <>
+                      <span aria-hidden="true" className="text-[var(--color-border-strong)]">·</span>
+                      <span className="max-w-[12rem] truncate">{configChips[0].label}</span>
+                    </>
+                  )}
+                  <span className="hidden select-none sm:inline">
+                    · <kbd className="font-mono">Enter</kbd> send · <kbd className="font-mono">Shift Enter</kbd> newline
+                  </span>
+                </div>
                 {isStreamingHere ? (
                   <button
+                    type="button"
                     onClick={handleStopGeneration}
-                    className="flex items-center justify-center h-9 w-9 rounded-xl bg-[var(--color-destructive)] hover:bg-[var(--color-destructive)]/90 text-white transition-all shadow-sm hover:shadow-md"
+                    className="flex h-8 flex-shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-destructive)] px-2.5 text-xs font-semibold text-white shadow-[var(--shadow-sm)] transition-colors hover:bg-[var(--color-destructive-hover)]"
+                    aria-label="Stop generation"
                     title="Stop generation"
                   >
                     <Square className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Stop</span>
                   </button>
                 ) : (
                   <button
+                    type="button"
                     onClick={handleSendMessage}
                     disabled={!input.trim()}
                     className={cn(
-                      'flex items-center justify-center h-9 w-9 rounded-xl transition-all',
+                      'flex h-8 flex-shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors',
                       input.trim()
-                        ? 'bg-[var(--color-accent-primary)] hover:bg-[var(--color-accent-primary)]/90 text-white shadow-sm shadow-[var(--color-accent-primary)]/30 hover:shadow-md hover:shadow-[var(--color-accent-primary)]/40'
-                        : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]/40 cursor-not-allowed'
+                        ? 'bg-[var(--color-accent-primary)] text-white shadow-[var(--shadow-sm)] hover:bg-[var(--color-accent-secondary)]'
+                        : 'cursor-not-allowed bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] opacity-60'
                     )}
+                    aria-label="Send message"
                     title="Send message"
                   >
-                    <ArrowUp className="h-4.5 w-4.5" />
+                    <ArrowUp className="h-4 w-4" />
+                    <span className="hidden sm:inline">Send</span>
                   </button>
                 )}
               </div>

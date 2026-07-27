@@ -1,5 +1,10 @@
 # Event Loop Fix for claude-agent-sdk Issue #462 ✅ RESOLVED
 
+> **Historical note:** This workaround remains relevant to Claude Agent SDK
+> streaming in FastAPI, but the Builder App no longer registers Databricks MCP
+> tools. Current Databricks operations use project skills plus the Databricks
+> CLI / Python SDK through `Bash`.
+
 ## Status: ✅ **WORKING - Production Ready**
 
 This document describes the complete fix for claude-agent-sdk issue #462, which has been successfully implemented and tested.
@@ -9,7 +14,7 @@ This document describes the complete fix for claude-agent-sdk issue #462, which 
 The `claude-agent-sdk` has a critical bug ([#462](https://github.com/anthropics/claude-agent-sdk-python/issues/462)) where the subprocess transport fails in FastAPI/uvicorn contexts. Symptoms include:
 
 1. **Only returns init message**: The SDK only returns the initial `SystemMessage` and terminates
-2. **Tools don't execute**: Agent cannot use MCP tools (like Databricks commands)
+2. **Tools don't execute**: Agent cannot complete built-in tool calls
 3. **Subprocess hangs**: The subprocess starts but Python never receives more stdout
 
 This makes the SDK unusable in typical FastAPI deployments with middleware, logging, and other production patterns.
@@ -19,11 +24,11 @@ This makes the SDK unusable in typical FastAPI deployments with middleware, logg
 ### Issue 1: Event Loop Pollution
 When `claude-agent-sdk` runs in a FastAPI/uvicorn context, the existing event loop interferes with the subprocess transport's `anyio.TextReceiveStream`, preventing it from receiving all subprocess output.
 
-### Issue 2: Context Variable Loss
-Python's `contextvars` (used for per-request Databricks authentication) **do not automatically propagate to new threads**. When spawning a thread for the fresh event loop, the Databricks auth context was lost, causing all Databricks tool calls to fail.
-
-### Issue 3: Empty String vs None
-The Claude agent sometimes passes empty strings (`""`) instead of `null`/`None` for optional parameters like `context_id`. The Databricks API tries to parse empty strings as numbers, causing `NumberFormatException`. The MCP tool wrappers need to convert empty strings to `None`.
+### Issue 2: Context Variable Loss (historical tool path)
+Python's `contextvars` do not automatically propagate to new threads. The
+original in-process tool implementation copied the request auth context into
+the fresh event-loop thread. Current CLI-only execution instead receives a
+project-scoped Databricks auth environment before Claude starts.
 
 ## Solution
 
@@ -61,7 +66,8 @@ def _run_agent_in_fresh_loop(message, options, result_queue, context):
 ```
 
 ### Part 2: Context Propagation
-Copy the `contextvars` context before spawning the thread to preserve Databricks authentication (in `server/services/agent.py`):
+Copy the `contextvars` context before spawning the thread (in
+`server/services/agent.py`). This remains useful for request and tracing state:
 
 ```python
 from contextvars import copy_context
@@ -96,44 +102,21 @@ try:
     elif msg_type == 'message':
       # Yield message to frontend...
 
-### Part 3: Empty String to None Conversion
-Convert empty strings to `None` in MCP tool wrappers (in `databricks-mcp-server/databricks_mcp_server/tools/compute.py`):
-
-```python
-@mcp.tool
-def execute_databricks_command(
-    code: str,
-    cluster_id: Optional[str] = None,
-    context_id: Optional[str] = None,
-    # ... other params
-) -> Dict[str, Any]:
-    # Convert empty strings to None (Claude agent sometimes passes "" instead of null)
-    if cluster_id == "":
-        cluster_id = None
-    if context_id == "":
-        context_id = None
-    
-    # ... rest of function
-```
-
-This prevents `NumberFormatException` when the Databricks API tries to parse empty strings as numbers.
-```
-
 ## How It Works
 
 1. **Main Thread (FastAPI)**: Runs the FastAPI/uvicorn event loop
 2. **Agent Thread**: Creates a fresh, isolated event loop for the Claude agent
-3. **Context Copy**: Copies `contextvars` context (including Databricks auth) to the new thread
+3. **Context Copy**: Copies request `contextvars` state to the new thread
 4. **Queue Communication**: Uses thread-safe queue to pass messages back to main thread
 5. **Async Bridge**: Main thread reads from queue asynchronously using `run_in_executor`
 
 ## Benefits
 
 ✅ **Fixes subprocess transport**: Fresh event loop isolates agent from FastAPI's event loop  
-✅ **Preserves authentication**: Context copy propagates Databricks credentials to new thread  
+✅ **Preserves request state**: Context copy propagates request context to the new thread
 ✅ **Maintains streaming**: Queue-based communication streams all messages properly  
 ✅ **Production-ready**: Works with middleware, logging, Sentry, and other FastAPI patterns  
-✅ **MCP tools work**: Databricks commands and other MCP tools execute successfully
+✅ **Built-in tools work**: Skill, Bash, and file tool events stream successfully
 
 ## Testing
 

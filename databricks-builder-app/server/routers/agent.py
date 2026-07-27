@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -19,11 +20,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..services.active_stream import get_stream_manager
-from ..services.agent import get_project_directory, stream_agent_response
+from ..services.agent import get_project_directory, get_project_directory_async, stream_agent_response
 from ..services.backup_manager import mark_for_backup
-from ..services.storage import ConversationStorage, ProjectStorage
+from ..services.fmapi_auth import is_deployed_mode
+from ..services.project_access import require_owned_project, require_stream_owner
+from ..services.storage import ConversationStorage
 from ..services.title_generator import generate_title_async
-from ..services.user import get_current_user, get_current_token, get_fmapi_token, get_workspace_url
+from ..services.user import get_current_token, get_fmapi_token, get_workspace_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -73,6 +76,42 @@ class StopStreamResponse(BaseModel):
     message: str
 
 
+_MISSING_SESSION_ERROR = 'No conversation found with session ID'
+
+
+async def _stream_with_stale_session_retry(
+    *,
+    session_id: Optional[str],
+    stream_factory: Callable[[Optional[str]], AsyncIterator[dict]],
+    clear_session: Callable[[], Awaitable[None]],
+) -> AsyncIterator[dict]:
+    """Retry once without resume when Claude's persisted session is missing."""
+    current_session_id = session_id
+
+    while True:
+        retry_fresh = False
+        async for event in stream_factory(current_session_id):
+            if (
+                current_session_id
+                and event.get('type') == 'error'
+                and _MISSING_SESSION_ERROR in str(event.get('error', ''))
+            ):
+                retry_fresh = True
+                break
+            yield event
+
+        if not retry_fresh:
+            return
+
+        logger.warning(
+            'Claude session %s is unavailable; clearing it and retrying once',
+            current_session_id,
+        )
+        await clear_session()
+        current_session_id = None
+        yield {'type': 'system', 'subtype': 'session_reset', 'data': None}
+
+
 @router.post('/invoke_agent', response_model=InvokeAgentResponse)
 async def invoke_agent(request: Request, body: InvokeAgentRequest):
     """Start the Claude Code agent asynchronously.
@@ -88,32 +127,46 @@ async def invoke_agent(request: Request, body: InvokeAgentRequest):
         f'Invoking agent for project: {body.project_id}, conversation: {body.conversation_id}'
     )
 
-    # Get current user and Databricks auth
-    user_email = await get_current_user(request)
-    # Use FMAPI token for Claude API (Service Principal OAuth in production)
-    user_token = await get_fmapi_token(request)
+    # Validate project ownership first (UUID → 400, missing → 404).
+    user_email, _project = await require_owned_project(request, body.project_id)
+    fmapi_token = await get_fmapi_token(request)
+    workspace_token = await get_current_token(request)
     workspace_url = get_workspace_url()
 
     # FMAPI (Claude API) always uses the Builder App's own workspace
     fmapi_host = workspace_url
-    fmapi_token = user_token
 
-    # Databricks tool operations target the caller-specified workspace when
-    # cross-workspace params are provided, otherwise default to this workspace
+    # Cross-workspace CLI auth requires an explicit target token. Pairing the
+    # builder-app forwarded token with a foreign host produces opaque CLI
+    # failures of the same class as the FMAPI fallback we removed.
+    if body.target_databricks_host and not body.target_databricks_token:
+        raise HTTPException(
+            status_code=400,
+            detail='target_databricks_token is required when target_databricks_host is set',
+        )
+
+    # Skills/CLI operations target the caller-specified workspace when present.
+    # Prefer the Apps proxy's request-scoped user token. Never fall back to the
+    # FMAPI/model-serving token — that is a different credential and produces
+    # opaque CLI failures. In deployed mode, refuse to run without a workspace
+    # token rather than silently inheriting the app service principal.
     is_cross_workspace = body.target_databricks_host is not None
     tools_host = body.target_databricks_host or workspace_url
-    tools_token = body.target_databricks_token or user_token
+    tools_token = body.target_databricks_token or workspace_token
+    if not tools_token and is_deployed_mode():
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                'No workspace access token available. Databricks Apps must provide '
+                'X-Forwarded-Access-Token for CLI operations. Refusing to fall back '
+                'to the app service principal.'
+            ),
+        )
 
-    # Verify project exists and belongs to user
-    project_storage = ProjectStorage(user_email)
-    project = await project_storage.get(body.project_id)
-    if not project:
-        logger.error(f'Project not found: {body.project_id}')
-        raise HTTPException(status_code=404, detail=f'Project not found: {body.project_id}')
-
-    # Read enabled skills from project filesystem (not DB)
+    # Read enabled skills from project filesystem (not DB). Await restore so
+    # Claude transcripts are on disk before session resume.
     from ..services.skills_manager import get_project_enabled_skills
-    project_dir = get_project_directory(body.project_id)
+    project_dir = await get_project_directory_async(body.project_id)
     enabled_skills = get_project_enabled_skills(project_dir)
 
     # Get or create conversation
@@ -171,25 +224,35 @@ async def invoke_agent(request: Request, body: InvokeAgentRequest):
         received_deltas = False  # Track if we received streaming deltas
 
         try:
+            def stream_factory(resume_session_id: Optional[str]) -> AsyncIterator[dict]:
+                return stream_agent_response(
+                    project_id=body.project_id,
+                    message=body.message,
+                    session_id=resume_session_id,
+                    cluster_id=body.cluster_id,
+                    default_catalog=body.default_catalog,
+                    default_schema=body.default_schema,
+                    warehouse_id=body.warehouse_id,
+                    workspace_folder=body.workspace_folder,
+                    fmapi_host=fmapi_host,
+                    fmapi_token=fmapi_token,
+                    databricks_host=tools_host,
+                    databricks_token=tools_token,
+                    is_cross_workspace=is_cross_workspace,
+                    is_cancelled_fn=lambda: stream.is_cancelled,
+                    enabled_skills=enabled_skills,
+                    mlflow_experiment_name=body.mlflow_experiment_name,
+                )
+
+            async def clear_stale_session() -> None:
+                await conv_storage.update_session_id(conversation_id, None)
+
             # Stream all events from Claude
             # Pass a cancellation check function so the agent thread can stop early
-            async for event in stream_agent_response(
-                project_id=body.project_id,
-                message=body.message,
+            async for event in _stream_with_stale_session_retry(
                 session_id=session_id,
-                cluster_id=body.cluster_id,
-                default_catalog=body.default_catalog,
-                default_schema=body.default_schema,
-                warehouse_id=body.warehouse_id,
-                workspace_folder=body.workspace_folder,
-                fmapi_host=fmapi_host,
-                fmapi_token=fmapi_token,
-                databricks_host=tools_host,
-                databricks_token=tools_token,
-                is_cross_workspace=is_cross_workspace,
-                is_cancelled_fn=lambda: stream.is_cancelled,
-                enabled_skills=enabled_skills,
-                mlflow_experiment_name=body.mlflow_experiment_name,
+                stream_factory=stream_factory,
+                clear_session=clear_stale_session,
             ):
                 # Check if cancelled (also checked in agent thread, but double-check here)
                 if stream.is_cancelled:
@@ -250,11 +313,16 @@ async def invoke_agent(request: Request, body: InvokeAgentRequest):
                     is_error = event.get('is_error', False)
 
                     # Detect cascade failure pattern - "Stream closed" errors indicate
-                    # the Claude subprocess's MCP connection is broken
+                    # the Claude agent subprocess channel is broken
                     if is_error and 'Stream closed' in str(content):
-                        logger.error(f'Detected MCP connection failure: {content}')
+                        logger.error(f'Detected agent stream failure: {content}')
                         # Add context to the error
-                        content = f'MCP Connection Lost: The tool execution was interrupted because the internal communication channel broke. This usually happens after a long-running operation. Please start a new conversation to reset the connection. Original error: {content}'
+                        content = (
+                            'Agent connection lost: tool execution was interrupted because the '
+                            'internal communication channel broke. This usually happens after a '
+                            'long-running operation. Please start a new conversation to reset the '
+                            f'connection. Original error: {content}'
+                        )
 
                     stream.add_event({
                         'type': 'tool_result',
@@ -393,7 +461,7 @@ async def invoke_agent(request: Request, body: InvokeAgentRequest):
 
 
 @router.post('/stream_progress/{execution_id}')
-async def stream_progress(execution_id: str, body: StreamProgressRequest):
+async def stream_progress(request: Request, execution_id: str, body: StreamProgressRequest):
     """Stream events from an active execution via SSE.
 
     This endpoint streams events as Server-Sent Events (SSE).
@@ -415,6 +483,8 @@ async def stream_progress(execution_id: str, body: StreamProgressRequest):
             status_code=404,
             detail=f'Stream not found: {execution_id}'
         )
+
+    await require_stream_owner(request, stream.user_email)
 
     async def generate_events():
         """Generate SSE stream of events with 50-second window."""
@@ -476,7 +546,7 @@ async def stream_progress(execution_id: str, body: StreamProgressRequest):
 
 
 @router.post('/stop_stream/{execution_id}', response_model=StopStreamResponse)
-async def stop_stream(execution_id: str):
+async def stop_stream(request: Request, execution_id: str):
     """Stop/cancel an active stream.
 
     Args:
@@ -493,6 +563,8 @@ async def stop_stream(execution_id: str):
             status_code=404,
             detail=f'Stream not found: {execution_id}'
         )
+
+    await require_stream_owner(request, stream.user_email)
 
     if stream.is_complete:
         return StopStreamResponse(
@@ -511,13 +583,8 @@ async def stop_stream(execution_id: str):
 @router.get('/projects/{project_id}/files')
 async def list_project_files(request: Request, project_id: str):
     """List files in a project directory."""
-    user_email = await get_current_user(request)
-
-    # Verify project exists and belongs to user
-    project_storage = ProjectStorage(user_email)
-    project = await project_storage.get(project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail=f'Project {project_id} not found')
+    # Validate ownership (UUID → 400, missing → 404) for parity with invoke_agent.
+    await require_owned_project(request, project_id)
 
     # Get project directory and list files
     project_dir = get_project_directory(project_id)
@@ -551,16 +618,8 @@ async def get_conversation_executions(
     """
     from ..services.storage import ExecutionStorage
 
-    user_email = await get_current_user(request)
-
-    # Verify project exists and belongs to user
-    project_storage = ProjectStorage(user_email)
-    project = await project_storage.get(project_id)
-    if not project:
-        raise HTTPException(
-            status_code=404,
-            detail=f'Project {project_id} not found'
-        )
+    # Validate ownership (UUID → 400, missing → 404) for parity with invoke_agent.
+    user_email, _project = await require_owned_project(request, project_id)
 
     # First check in-memory streams for this conversation (always works)
     stream_manager = get_stream_manager()
@@ -590,6 +649,23 @@ async def get_conversation_executions(
         exec_storage = ExecutionStorage(user_email, project_id, conversation_id)
         active = await exec_storage.get_active()
         recent = await exec_storage.get_recent(limit=5)
+
+        # After process restart, DB can still say "running" while the in-memory
+        # stream is gone. Treat those as orphaned — never hand them to the
+        # client as reconnectable (stream_progress would 404).
+        if active is not None and in_memory_active is None:
+            logger.warning(
+                'Orphaned running execution %s for conversation %s; marking cancelled',
+                active.id,
+                conversation_id,
+            )
+            await exec_storage.update_status(
+                active.id,
+                'cancelled',
+                error='Execution lost after process restart',
+            )
+            active = None
+            recent = await exec_storage.get_recent(limit=5)
     except Exception as e:
         # Table might not exist yet (migration pending) - log and continue
         # In-memory streams will still work
