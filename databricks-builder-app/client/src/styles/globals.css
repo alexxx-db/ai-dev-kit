@@ -2,50 +2,61 @@
 @tailwind components;
 @tailwind utilities;
 
-/**
- * Theme CSS Variables
- * Based on template theming system with simplified defaults.
- */
 :root {
-  /* TEXT COLORS */
-  --color-text-heading: #09090B;
-  --color-text-primary: #18181B;
-  --color-text-muted: #71717A;
+  /* Semantic workspace palette */
+  --color-canvas: #f6f4f1;
+  --color-panel: #fbfaf8;
+  --color-elevated: #ffffff;
+  --color-subtle: #eeebe6;
+  --color-text-heading: #171615;
+  --color-text-primary: #292725;
+  --color-text-secondary: #56514c;
+  --color-text-muted: #746e68;
+  --color-border: #ddd8d1;
+  --color-border-strong: #c7c0b8;
+  --color-focus: #e24332;
+  --color-code-bg: #ebe7e1;
+  --color-code-border: #d8d1c9;
+  --color-scrollbar: #b9b1a8;
+  --color-scrollbar-hover: #91877d;
+  --workspace-glow: rgb(255 54 33 / 0.035);
+  --workspace-grid: rgb(41 39 37 / 0.025);
 
-  /* ACCENT/BRAND COLOR - Databricks Brand */
-  --color-accent-primary: #FF3621;
-  --color-accent-secondary: #FF5F46;
+  /* Databricks red is reserved for actions and emphasis. */
+  --color-accent-primary: #e24332;
+  --color-accent-secondary: #c93627;
 
-  /* BACKGROUND COLORS */
-  --color-bg-primary: #FFFFFF;
-  --color-bg-secondary: #F9F7F4;
-  --color-bg-tertiary: #F0EDEA;
-  --color-bg-elevated: #FFFFFF;
+  /* Status colors */
+  --color-success: #087f5b;
+  --color-error: #c9362b;
+  --color-info: #245f73;
+  --color-warning: #a96700;
+  --color-destructive: #c9362b;
+  --color-destructive-hover: #a82d24;
 
-  /* BORDER */
-  --color-border: #E0DCD8;
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgb(42 35 29 / 0.06);
+  --shadow-md: 0 8px 24px rgb(42 35 29 / 0.08);
+  --shadow-lg: 0 18px 48px rgb(42 35 29 / 0.12);
 
-  /* STATUS COLORS */
-  --color-success: #00A972;
-  --color-error: #EF4444;
-  --color-info: #1B3139;
-  --color-warning: #FFAB00;
-  --color-destructive: #EF4444;
-
-  /* TAILWIND COMPATIBILITY */
+  /* Existing component aliases */
+  --color-bg-primary: var(--color-canvas);
+  --color-bg-secondary: var(--color-panel);
+  --color-bg-tertiary: var(--color-subtle);
+  --color-bg-elevated: var(--color-elevated);
   --color-primary: var(--color-accent-primary);
-  --color-primary-foreground: #FFFFFF;
-  --color-secondary: var(--color-bg-secondary);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--color-panel);
   --color-secondary-foreground: var(--color-text-primary);
   --color-foreground: var(--color-text-primary);
-  --color-background: var(--color-bg-primary);
-  --color-muted: var(--color-bg-tertiary);
+  --color-background: var(--color-canvas);
+  --color-muted: var(--color-subtle);
   --color-muted-foreground: var(--color-text-muted);
-  --color-accent: var(--color-bg-secondary);
+  --color-accent: var(--color-panel);
   --color-accent-foreground: var(--color-text-primary);
-  --color-ring: var(--color-accent-primary);
+  --color-ring: var(--color-focus);
 
-  /* LAYOUT */
+  /* Layout */
   --sidebar-width: 280px;
   --header-height: 56px;
   --radius-sm: 4px;
@@ -53,50 +64,102 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
 
-  /* FONTS - Databricks Brand */
+  /* Typography */
   --font-body: "DM Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-heading: "DM Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
 }
 
-/* Dark mode support */
-.dark {
-  --color-text-heading: #FAFAFA;
-  --color-text-primary: #E4E4E7;
-  --color-text-muted: #A1A1AA;
+:root.dark {
+  --color-canvas: #151719;
+  --color-panel: #1b1e21;
+  --color-elevated: #22262a;
+  --color-subtle: #292d31;
+  --color-text-heading: #f4f2ef;
+  --color-text-primary: #dedbd6;
+  --color-text-secondary: #b6b1aa;
+  --color-text-muted: #98928b;
+  --color-border: #34383c;
+  --color-border-strong: #484d52;
+  --color-focus: #ff6958;
+  --color-code-bg: #111315;
+  --color-code-border: #303438;
+  --color-scrollbar: #51565b;
+  --color-scrollbar-hover: #6a7076;
+  --workspace-glow: rgb(255 95 70 / 0.04);
+  --workspace-grid: rgb(255 255 255 / 0.018);
 
-  --color-accent-primary: #FF5F46;
-  --color-accent-secondary: #FF3621;
+  --color-accent-primary: #ff5f46;
+  --color-accent-secondary: #ff806d;
+  --color-success: #48b98d;
+  --color-error: #ff7166;
+  --color-info: #74b7cc;
+  --color-warning: #e2a64c;
+  --color-destructive: #e95449;
+  --color-destructive-hover: #ff7166;
 
-  --color-bg-primary: #1B2026;
-  --color-bg-secondary: #141A1F;
-  --color-bg-tertiary: #1F272E;
-  --color-bg-elevated: #243038;
-
-  --color-border: #2E3A42;
-
-  --color-primary-foreground: #FFFFFF;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.24);
+  --shadow-md: 0 10px 28px rgb(0 0 0 / 0.28);
+  --shadow-lg: 0 20px 56px rgb(0 0 0 / 0.36);
 }
 
 @layer base {
   * {
     border-color: var(--color-border);
+    scrollbar-color: var(--color-scrollbar) transparent;
+    scrollbar-width: thin;
   }
+
+  html {
+    min-height: 100%;
+    background-color: var(--color-canvas);
+  }
+
   body {
-    background-color: var(--color-bg-primary);
+    min-height: 100vh;
+    margin: 0;
+    background-color: var(--color-canvas);
+    background-image:
+      radial-gradient(circle at 8% -10%, var(--workspace-glow), transparent 28rem),
+      linear-gradient(var(--workspace-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--workspace-grid) 1px, transparent 1px);
+    background-size: auto, 32px 32px, 32px 32px;
     color: var(--color-text-primary);
     font-family: var(--font-body);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
+
+  #root {
+    min-height: 100vh;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     color: var(--color-text-heading);
     font-family: var(--font-heading);
   }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+  }
+
+  :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-accent-primary) 24%, transparent);
+    color: var(--color-text-heading);
+  }
 }
 
-/* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -104,13 +167,30 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-text-muted);
-  opacity: 0.3;
-  border-radius: 4px;
+  min-height: 32px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--color-scrollbar);
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  opacity: 0.5;
+  background-color: var(--color-scrollbar-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Compact prose for chat messages */
@@ -153,7 +233,8 @@
 .prose-xs code {
   font-size: 0.9em;
   padding: 0.15em 0.3em;
-  background: var(--color-bg-tertiary);
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-code-border);
   border-radius: 3px;
 }
 
@@ -162,7 +243,8 @@
   margin-bottom: 0.5em;
   padding: 0.75em;
   font-size: 12px;
-  background: var(--color-bg-tertiary);
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-code-border);
   border-radius: 6px;
   overflow-x: auto;
 }
@@ -170,6 +252,7 @@
 .prose-xs pre code {
   padding: 0;
   background: transparent;
+  border: 0;
 }
 
 .prose-xs a {

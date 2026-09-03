@@ -62,11 +62,14 @@ function TreeNode({
   return (
     <div>
       <button
+        type="button"
         onClick={handleClick}
+        aria-expanded={isDirectory ? isExpanded : undefined}
+        aria-current={isSelected ? 'true' : undefined}
         className={cn(
-          'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs transition-colors',
+          'flex w-full items-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-left text-[11px] transition-colors',
           isSelected
-            ? 'bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]'
+            ? 'border-[var(--color-border)] bg-[var(--color-bg-tertiary)] font-medium text-[var(--color-text-heading)]'
             : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text-primary)]'
         )}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
@@ -79,16 +82,16 @@ function TreeNode({
               <ChevronRight className="h-3 w-3 flex-shrink-0 text-[var(--color-text-muted)]" />
             )}
             {isExpanded ? (
-              <FolderOpen className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-warning)]" />
+              <FolderOpen className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-accent-primary)]" />
             ) : (
-              <Folder className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-warning)]" />
+              <Folder className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-muted)]" />
             )}
           </>
         ) : (
           <>
             <span className="w-3" />
             {isMarkdown ? (
-              <FileText className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-accent-secondary)]" />
+              <FileText className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-info)]" />
             ) : (
               <File className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-muted)]" />
             )}
@@ -137,14 +140,14 @@ function Toggle({
         onChange(!checked);
       }}
       className={cn(
-        'relative inline-flex h-4 w-7 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-primary)]/50 focus:ring-offset-1',
+        'relative inline-flex h-4 w-7 flex-shrink-0 cursor-pointer rounded-full border border-[var(--color-border-strong)] transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg-elevated)]',
         checked ? 'bg-[var(--color-accent-primary)]' : 'bg-[var(--color-text-muted)]/50',
         disabled && 'opacity-50 cursor-not-allowed'
       )}
     >
       <span
         className={cn(
-          'pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+          'pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-[var(--shadow-sm)] transition duration-200 ease-in-out',
           checked ? 'translate-x-3' : 'translate-x-0'
         )}
       />
@@ -402,37 +405,42 @@ export function SkillsExplorer({
   const isMarkdownFile = selectedType === 'system_prompt' || selectedPath?.endsWith('.md');
 
   return (
-    <div className="fixed inset-0 z-50 flex">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 lg:p-6" role="dialog" aria-modal="true" aria-label="Skills explorer">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      <button
+        type="button"
+        aria-label="Close skills explorer"
+        className="absolute inset-0 cursor-default bg-black/55 backdrop-blur-[2px]"
         onClick={onClose}
       />
 
       {/* Content */}
-      <div className="relative z-10 flex w-full h-full m-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] shadow-2xl overflow-hidden">
+      <div className="relative z-10 flex h-full max-h-[60rem] w-full max-w-[90rem] flex-col overflow-hidden rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-bg-elevated)] shadow-[var(--shadow-lg)] sm:flex-row">
         {/* Left sidebar - Navigation */}
-        <div className="w-72 flex-shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]/30 flex flex-col">
+        <div className="flex h-[42%] w-full flex-shrink-0 flex-col border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] sm:h-auto sm:w-64 sm:border-b-0 sm:border-r lg:w-72">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
-            <h2 className="text-sm font-semibold text-[var(--color-text-heading)]">
-              Skills & Docs
-            </h2>
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]">
-              {enabledCount}/{totalCount}
+          <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3.5 py-3">
+            <div>
+              <h2 className="text-xs font-semibold text-[var(--color-text-heading)]">Agent context</h2>
+              <p className="mt-0.5 text-[10px] text-[var(--color-text-muted)]">Skills and generated prompt</p>
+            </div>
+            <span className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--color-text-secondary)]">
+              {enabledCount}/{totalCount} on
             </span>
           </div>
 
           {/* Navigation content */}
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
             {/* System Prompt */}
             <button
+              type="button"
               onClick={handleSelectSystemPrompt}
+              aria-current={selectedType === 'system_prompt' ? 'true' : undefined}
               className={cn(
-                'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors mb-2',
+                'mb-2 flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors',
                 selectedType === 'system_prompt'
-                  ? 'bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]'
-                  : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text-primary)]'
+                  ? 'border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-heading)]'
+                  : 'border-transparent text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]'
               )}
             >
               <Sparkles className="h-3.5 w-3.5 flex-shrink-0" />
@@ -440,15 +448,14 @@ export function SkillsExplorer({
             </button>
 
             {/* Divider */}
-            <div className="my-2 border-t border-[var(--color-border)]" />
-
             {/* Action Buttons Row */}
-            <div className="flex gap-1.5 mb-3">
+            <div className="mb-3 grid grid-cols-[1fr_auto_auto] gap-1.5 border-t border-[var(--color-border)] pt-2.5">
               {/* Reload Skills Button */}
               <button
+                type="button"
                 onClick={handleReloadSkills}
                 disabled={isReloading}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-medium bg-[var(--color-accent-primary)] text-white hover:bg-[var(--color-accent-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                className="flex h-7 items-center justify-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-2 text-[10px] font-semibold text-[var(--color-text-secondary)] shadow-[var(--shadow-sm)] transition-colors hover:border-[var(--color-border-strong)] hover:text-[var(--color-text-heading)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <RefreshCw className={cn('h-3 w-3 flex-shrink-0', isReloading && 'animate-spin')} />
                 <span>{isReloading ? 'Reloading...' : 'Reload'}</span>
@@ -456,24 +463,27 @@ export function SkillsExplorer({
 
               {/* Enable All / Disable All */}
               <button
+                type="button"
                 onClick={() => handleToggleAll(true)}
                 disabled={isUpdatingSkills || enabledCount === totalCount}
-                className="flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-medium border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex h-7 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-2 text-[10px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-border-strong)] hover:text-[var(--color-text-heading)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 All on
               </button>
               <button
+                type="button"
                 onClick={() => handleToggleAll(false)}
                 disabled={isUpdatingSkills || enabledCount <= 1}
-                className="flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-medium border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex h-7 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-2 text-[10px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-border-strong)] hover:text-[var(--color-text-heading)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Min
               </button>
             </div>
 
             {/* Skills label */}
-            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
-              Skills
+            <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--color-text-muted)]">
+              <span>Skills</span>
+              {isUpdatingSkills && <Loader2 className="h-3 w-3 animate-spin" />}
             </div>
 
             {/* Skills list with toggles */}
@@ -491,7 +501,7 @@ export function SkillsExplorer({
                   <div
                     key={skill.name}
                     className={cn(
-                      'flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors group',
+                      'group flex items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-xs transition-colors hover:border-[var(--color-border)] hover:bg-[var(--color-bg-elevated)]',
                       !skill.enabled && 'opacity-50'
                     )}
                   >
@@ -501,7 +511,7 @@ export function SkillsExplorer({
                       disabled={isUpdatingSkills}
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-[var(--color-text-primary)] truncate text-[11px]">
+                      <div className="truncate text-[11px] font-semibold text-[var(--color-text-primary)]">
                         {skill.name}
                       </div>
                       <div className="text-[var(--color-text-muted)] truncate text-[10px] leading-tight">
@@ -517,7 +527,7 @@ export function SkillsExplorer({
             {tree.length > 0 && (
               <>
                 <div className="my-3 border-t border-[var(--color-border)]" />
-                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--color-text-muted)]">
                   Skill Files
                 </div>
                 <div className="space-y-0.5">
@@ -539,30 +549,34 @@ export function SkillsExplorer({
         </div>
 
         {/* Right panel - Content */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-canvas)]">
           {/* Header */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--color-border)]">
+          <div className="flex min-h-14 items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-3 py-2.5 sm:px-5">
             <div className="flex items-center gap-2 min-w-0">
               {selectedType === 'system_prompt' ? (
                 <>
-                  <Sparkles className="h-4 w-4 flex-shrink-0 text-[var(--color-accent-primary)]" />
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
+                    <Sparkles className="h-3.5 w-3.5 text-[var(--color-accent-primary)]" />
+                  </span>
                   <div className="min-w-0">
-                    <h3 className="text-sm font-semibold text-[var(--color-text-heading)] truncate">
+                    <h3 className="truncate text-xs font-semibold text-[var(--color-text-heading)]">
                       System Prompt
                     </h3>
-                    <p className="text-xs text-[var(--color-text-muted)]">
+                    <p className="hidden text-[10px] text-[var(--color-text-muted)] sm:block">
                       Instructions injected to Claude Code
                     </p>
                   </div>
                 </>
               ) : (
                 <>
-                  <FileText className="h-4 w-4 flex-shrink-0 text-[var(--color-accent-secondary)]" />
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
+                    <FileText className="h-3.5 w-3.5 text-[var(--color-info)]" />
+                  </span>
                   <div className="min-w-0">
-                    <h3 className="text-sm font-semibold text-[var(--color-text-heading)] truncate">
+                    <h3 className="truncate text-xs font-semibold text-[var(--color-text-heading)]">
                       {selectedPath?.split('/').pop() || 'Select a file'}
                     </h3>
-                    <p className="text-xs text-[var(--color-text-muted)] truncate">
+                    <p className="hidden truncate text-[10px] text-[var(--color-text-muted)] sm:block">
                       {selectedPath || 'Choose a skill file from the sidebar'}
                     </p>
                   </div>
@@ -570,16 +584,18 @@ export function SkillsExplorer({
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-shrink-0 items-center gap-1">
               {/* Toggle raw/rendered for markdown */}
               {isMarkdownFile && (
                 <button
+                  type="button"
                   onClick={() => setShowRawCode(!showRawCode)}
+                  aria-pressed={showRawCode}
                   className={cn(
-                    'flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors',
+                    'flex h-8 items-center gap-1 rounded-md border px-2 text-[10px] font-semibold transition-colors',
                     showRawCode
-                      ? 'bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]'
-                      : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)]'
+                      ? 'border-[var(--color-accent-primary)] bg-[var(--color-bg-secondary)] text-[var(--color-accent-primary)]'
+                      : 'border-[var(--color-border)] bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)] hover:border-[var(--color-border-strong)] hover:text-[var(--color-text-primary)]'
                   )}
                 >
                   {showRawCode ? (
@@ -598,8 +614,10 @@ export function SkillsExplorer({
 
               {/* Close button */}
               <button
+                type="button"
                 onClick={onClose}
-                className="p-1 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)] transition-colors"
+                aria-label="Close skills explorer"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)] transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text-primary)]"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -607,20 +625,20 @@ export function SkillsExplorer({
           </div>
 
           {/* Content area */}
-          <div className="flex-1 overflow-y-auto p-5">
+          <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5 lg:p-7">
             {isLoadingContent ? (
               <div className="flex items-center justify-center py-20">
                 <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="h-6 w-6 animate-spin text-[var(--color-accent-primary)]" />
+                  <Loader2 className="h-5 w-5 animate-spin text-[var(--color-accent-primary)]" />
                   <p className="text-xs text-[var(--color-text-muted)]">Loading...</p>
                 </div>
               </div>
             ) : showRawCode || !isMarkdownFile ? (
-              <pre className="text-xs font-mono text-[var(--color-text-primary)] whitespace-pre-wrap break-words bg-[var(--color-bg-secondary)]/50 p-4 rounded-lg border border-[var(--color-border)]">
+              <pre className="mx-auto max-w-4xl whitespace-pre-wrap break-words rounded-lg border border-[var(--color-code-border)] bg-[var(--color-code-bg)] p-4 font-mono text-xs leading-6 text-[var(--color-text-primary)] shadow-[var(--shadow-sm)]">
                 {content}
               </pre>
             ) : (
-              <div className="prose prose-xs max-w-none text-[var(--color-text-primary)] text-xs leading-relaxed">
+              <div className="prose prose-xs mx-auto max-w-4xl rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-5 text-[13px] leading-6 text-[var(--color-text-primary)] shadow-[var(--shadow-sm)] sm:p-7">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
               </div>
             )}

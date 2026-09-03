@@ -9,25 +9,25 @@ interface MainLayoutProps {
 
 export function MainLayout({ children, projectName, sidebar }: MainLayoutProps) {
   return (
-    <div className="h-screen bg-[var(--color-background)] flex flex-col overflow-hidden">
+    <div className="isolate flex h-screen flex-col overflow-hidden bg-[var(--color-canvas)] text-[var(--color-text-primary)]">
       {/* Top Bar - Fixed position */}
       <TopBar projectName={projectName} />
 
       {/* Spacer for fixed header */}
-      <div className="flex-shrink-0 h-[var(--header-height)]" />
+      <div className="h-[var(--header-height)] flex-shrink-0" />
 
       {/* Main Layout */}
-      <div className="flex-1 flex relative overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[var(--color-canvas)]">
         {/* Sidebar */}
         {sidebar && (
-          <div className="hidden lg:block flex-shrink-0">
+          <div className="hidden flex-shrink-0 lg:block">
             {sidebar}
           </div>
         )}
 
         {/* Main Content Area */}
-        <main className="flex-1 flex flex-col h-full relative bg-[var(--color-background)] overflow-hidden">
-          <div className="relative flex-1 flex flex-col min-h-0">
+        <main className="relative m-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-sm)] lg:ml-0">
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
             {children}
           </div>
         </main>

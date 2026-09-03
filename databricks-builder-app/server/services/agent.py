@@ -1,10 +1,10 @@
 """Claude Code Agent service for managing agent sessions.
 
 Uses the claude-agent-sdk to create and manage Claude Code agent sessions
-with directory-scoped file permissions and Databricks tools.
+with directory-scoped file permissions and skills-driven Databricks CLI access.
 
-Databricks tools are loaded in-process from databricks-mcp-server using
-the SDK tool wrapper. Auth is handled via contextvars for multi-user support.
+Databricks workflows come from project skills. CLI/SDK subprocess auth is
+scoped to a per-project profile so local and deployed execution behave alike.
 
 MLflow Tracing:
   Uses ClaudeSDKClient with mlflow.anthropic.autolog() for automatic tracing.
@@ -47,7 +47,13 @@ from claude_agent_sdk.types import (
 from databricks_tools_core.auth import set_databricks_auth, clear_databricks_auth
 
 from .backup_manager import ensure_project_directory as _ensure_project_directory
-from .databricks_tools import load_databricks_tools, create_filtered_databricks_server
+from .backup_manager import ensure_project_directory_async as _ensure_project_directory_async
+from .cli_auth import build_cli_auth_env
+from .fmapi_auth import (
+  ensure_project_disables_mcp,
+  is_deployed_mode,
+  provision_project_files,
+)
 from .system_prompt import get_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -57,14 +63,10 @@ BUILTIN_TOOLS = [
   'Read',
   'Write',
   'Edit',
-#  'Bash',
+  'Bash',
   'Glob',
   'Grep',
 ]
-
-# Cached Databricks tools (loaded once)
-_databricks_server = None
-_databricks_tool_names = None
 
 # Cached Claude settings (loaded once)
 _claude_settings = None
@@ -90,36 +92,100 @@ def _load_claude_settings() -> dict:
   return _claude_settings
 
 
-def get_databricks_tools(force_reload: bool = False):
-  """Get Databricks tools, optionally forcing a reload.
+def _build_claude_auth(
+  *,
+  project_dir: Path,
+  fmapi_host: str | None,
+  fmapi_token: str | None,
+  databricks_host: str | None = None,
+  databricks_token: str | None = None,
+) -> dict[str, str]:
+  """Configure Claude auth without exposing deployed OAuth tokens in its env."""
+  claude_env = dict(_load_claude_settings())
+  effective_host = fmapi_host or databricks_host
+  effective_token = fmapi_token or databricks_token
 
-  Args:
-      force_reload: If True, recreate the MCP server to clear any corrupted state
+  if not effective_host or not effective_token:
+    logger.error(
+      'FMAPI credentials missing: host=%r, token_present=%s',
+      effective_host,
+      bool(effective_token),
+    )
+    return claude_env
 
-  Returns:
-      Tuple of (server, tool_names)
+  host = effective_host.rstrip('/').removeprefix('https://').removeprefix('http://')
+  base_path = os.environ.get(
+    'ANTHROPIC_BASE_PATH',
+    'serving-endpoints/anthropic',
+  ).strip('/')
+  anthropic_base_url = f'https://{host}/{base_path}'
+  anthropic_model = os.environ.get(
+    'ANTHROPIC_MODEL',
+    'databricks-claude-opus-4-6',
+  )
+
+  if is_deployed_mode():
+    provision_project_files(
+      project_dir,
+      anthropic_base_url=anthropic_base_url,
+      anthropic_model=anthropic_model,
+      token=effective_token,
+    )
+    # Relocate Claude's user-scope config (transcripts, live state) into the
+    # project so Lakebase backups capture them. Local must NOT set this —
+    # it would cut off `claude login` / Keychain credentials.
+    claude_env['CLAUDE_CONFIG_DIR'] = str((project_dir / '.claude').resolve())
+    logger.warning(
+      'Configured deployed FMAPI apiKeyHelper at %s with model %s '
+      '(CLAUDE_CONFIG_DIR=%s)',
+      project_dir / '.claude' / 'settings.json',
+      anthropic_model,
+      claude_env['CLAUDE_CONFIG_DIR'],
+    )
+    return claude_env
+
+  # Preserve the existing local path. Local development does not relocate or
+  # overwrite the developer's Claude configuration. Still pin project settings
+  # so Claude does not attempt leftover project MCP servers.
+  ensure_project_disables_mcp(project_dir)
+  claude_env.update({
+    'ANTHROPIC_BASE_URL': anthropic_base_url,
+    'ANTHROPIC_API_KEY': effective_token,
+    'ANTHROPIC_AUTH_TOKEN': '',
+    'CLAUDE_CODE_OAUTH_TOKEN': '',
+    'ANTHROPIC_MODEL': anthropic_model,
+    'ANTHROPIC_CUSTOM_HEADERS': 'x-databricks-use-coding-agent-mode: true',
+    'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS': '1',
+  })
+  logger.warning(
+    'Configured local Databricks model serving: %s with model %s',
+    anthropic_base_url,
+    anthropic_model,
+  )
+  return claude_env
+
+
+def _claude_setting_sources() -> list[str]:
+  """Return Claude setting sources for the builder-app agent.
+
+  Always project-only. User-scope settings pull in the host Claude MCP
+  ecosystem and can stall local chat startup for minutes.
   """
-  global _databricks_server, _databricks_tool_names
-  if _databricks_server is None or force_reload:
-    if force_reload:
-      logger.info('Force reloading Databricks MCP server')
-    _databricks_server, _databricks_tool_names = load_databricks_tools()
-  return _databricks_server, _databricks_tool_names
+  return ['project']
 
 
 def get_project_directory(project_id: str) -> Path:
   """Get the directory path for a project.
 
-  If the directory doesn't exist, attempts to restore from backup.
-  If no backup exists, creates an empty directory.
-
-  Args:
-      project_id: The project UUID
-
-  Returns:
-      Path to the project directory
+  Prefer ``get_project_directory_async`` from async handlers so Lakebase
+  restore is awaited before session resume.
   """
   return _ensure_project_directory(project_id)
+
+
+async def get_project_directory_async(project_id: str) -> Path:
+  """Async project directory ensure — awaits backup restore before return."""
+  return await _ensure_project_directory_async(project_id)
 
 
 def _setup_mlflow_autolog(experiment_name: str | None = None):
@@ -315,25 +381,10 @@ async def stream_agent_response(
     # Build allowed tools list
     allowed_tools = BUILTIN_TOOLS.copy()
 
-    # Sync project skills directory before running agent
-    from .skills_manager import sync_project_skills, get_available_skills, get_allowed_mcp_tools
+    # Sync project skills before running the CLI-only agent. Skills contain
+    # the Databricks CLI / Python SDK workflows that replace MCP tools.
+    from .skills_manager import sync_project_skills, get_available_skills
     sync_project_skills(project_dir, enabled_skills=enabled_skills)
-
-    # Get Databricks tools and filter based on enabled skills.
-    # We must create a filtered MCP server (not just filter allowed_tools)
-    # because bypassPermissions mode exposes all tools in registered MCP servers.
-    databricks_server, databricks_tool_names = get_databricks_tools()
-    filtered_tool_names = get_allowed_mcp_tools(databricks_tool_names, enabled_skills=enabled_skills)
-
-    if len(filtered_tool_names) < len(databricks_tool_names):
-      # Some tools are blocked — create a filtered MCP server with only allowed tools
-      databricks_server, filtered_tool_names = create_filtered_databricks_server(filtered_tool_names)
-      blocked_count = len(databricks_tool_names) - len(filtered_tool_names)
-      logger.info(f'Databricks MCP server: {len(filtered_tool_names)} tools allowed, {blocked_count} blocked by disabled skills')
-    else:
-      logger.info(f'Databricks MCP server configured with {len(filtered_tool_names)} tools')
-
-    allowed_tools.extend(filtered_tool_names)
 
     # Only add the Skill tool if there are enabled skills for the agent to use
     available = get_available_skills(enabled_skills=enabled_skills)
@@ -351,42 +402,30 @@ async def stream_agent_response(
       enabled_skills=enabled_skills,
     )
 
-    # Load Claude settings for Databricks model serving authentication
-    claude_env = _load_claude_settings()
-
-    # Log auth state for debugging
-    logger.info(
+    # WARNING so these show up in Databricks Apps logs (INFO can be sparse there).
+    logger.warning(
       f'Auth state: fmapi_host={fmapi_host}, databricks_host={databricks_host}, '
-      f'is_cross_workspace={is_cross_workspace}'
+      f'is_cross_workspace={is_cross_workspace}, '
+      f'fmapi_token_len={len(fmapi_token or "")}, tools_token_len={len(databricks_token or "")}'
     )
 
-    # Configure Claude subprocess to use Databricks FMAPI on the Builder App's
-    # workspace. FMAPI auth always points at the Builder App, even when tool
-    # operations target a different workspace (cross-workspace mode).
-    # Fall back to databricks_host/token for callers that don't split FMAPI creds.
-    effective_fmapi_host = fmapi_host or databricks_host
-    effective_fmapi_token = fmapi_token or databricks_token
-    if effective_fmapi_host and effective_fmapi_token:
-      host = effective_fmapi_host.replace('https://', '').replace('http://', '').rstrip('/')
-      anthropic_base_url = f'https://{host}/serving-endpoints/anthropic'
-
-      claude_env['ANTHROPIC_BASE_URL'] = anthropic_base_url
-      claude_env['ANTHROPIC_API_KEY'] = effective_fmapi_token
-      claude_env['ANTHROPIC_AUTH_TOKEN'] = effective_fmapi_token
-
-      # Set the model to use (required for Databricks FMAPI)
-      anthropic_model = os.environ.get('ANTHROPIC_MODEL', 'databricks-claude-opus-4-6')
-      claude_env['ANTHROPIC_MODEL'] = anthropic_model
-
-      # Disable beta headers and experimental betas for Databricks FMAPI compatibility
-      # ANTHROPIC_CUSTOM_HEADERS enables coding agent mode on FMAPI
-      # CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS prevents context_management and other
-      # experimental body parameters that FMAPI doesn't support (400: Extra inputs not permitted)
-      claude_env['ANTHROPIC_CUSTOM_HEADERS'] = 'x-databricks-use-coding-agent-mode: true'
-      claude_env['CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS'] = '1'
-
-      logger.info(f'Configured Databricks model serving: {anthropic_base_url} with model {anthropic_model}')
-      logger.info(f'Claude env vars: BASE_URL={claude_env.get("ANTHROPIC_BASE_URL")}, MODEL={claude_env.get("ANTHROPIC_MODEL")}')
+    # Deployed mode writes a project-local apiKeyHelper and keeps the OAuth
+    # bearer out of the subprocess environment. Local mode retains its existing
+    # environment-based Databricks FMAPI path.
+    claude_env = _build_claude_auth(
+      project_dir=project_dir,
+      fmapi_host=fmapi_host,
+      fmapi_token=fmapi_token,
+      databricks_host=databricks_host,
+      databricks_token=databricks_token,
+    )
+    claude_env.update(
+      build_cli_auth_env(
+        project_dir,
+        host=databricks_host,
+        token=databricks_token,
+      )
+    )
 
     # Databricks SDK upstream tracking for subprocess user-agent attribution
     from databricks_tools_core.identity import PRODUCT_NAME, PRODUCT_VERSION
@@ -397,30 +436,58 @@ async def stream_agent_response(
     stream_timeout = os.environ.get('CLAUDE_CODE_STREAM_CLOSE_TIMEOUT', '3600000')
     claude_env['CLAUDE_CODE_STREAM_CLOSE_TIMEOUT'] = stream_timeout
 
-    # Stderr callback to capture Claude subprocess output for debugging
-    def stderr_callback(line: str):
-      logger.debug(f'[Claude stderr] {line.strip()}')
-      # Also print to stderr for immediate visibility during development
-      print(f'[Claude stderr] {line.strip()}', file=sys.stderr, flush=True)
+    # Stderr callback to capture Claude subprocess output for debugging.
+    # SDK ProcessError replaces real stderr with a placeholder, so we keep a
+    # local buffer and attach it when re-raising.
+    claude_stderr_lines: list[str] = []
 
-    # Handle AskUserQuestion tool calls gracefully.
-    # With bypassPermissions and no callback, AskUserQuestion triggers an SDK
-    # error ("canUseTool callback is not provided") which produces is_error=True
-    # tool results — showing as "Failed" in downstream UIs like Lemma.
-    # This callback allows AskUserQuestion with a synthetic answer that redirects
-    # Claude to ask questions as normal text, avoiding the error path entirely.
+    def stderr_callback(line: str):
+      text = line.strip()
+      if text:
+        claude_stderr_lines.append(text)
+        logger.warning(f'[Claude stderr] {text}')
+        print(f'[Claude stderr] {text}', file=sys.stderr, flush=True)
+
+    # Path-scoped Read/Write/Edit + AskUserQuestion handling.
+    # Use dontAsk (not bypassPermissions) so this callback actually runs —
+    # bypassPermissions skips can_use_tool entirely.
+    _PATH_TOOLS = {'Read', 'Write', 'Edit', 'NotebookEdit'}
+    _project_root = project_dir.resolve()
+
     async def can_use_tool(
       tool_name: str, input_data: dict, _context: ToolPermissionContext,
     ) -> PermissionResultAllow | PermissionResultDeny:
-      if tool_name == "AskUserQuestion":
-        questions = input_data.get("questions", [])
+      if tool_name == 'AskUserQuestion':
+        questions = input_data.get('questions', [])
         answers = {
-          q.get("question", ""): "Please ask this question directly in your text response."
+          q.get('question', ''): 'Please ask this question directly in your text response.'
           for q in questions
         }
         return PermissionResultAllow(
-          updated_input={"questions": questions, "answers": answers},
+          updated_input={'questions': questions, 'answers': answers},
         )
+
+      if tool_name in _PATH_TOOLS:
+        raw = input_data.get('file_path') or input_data.get('notebook_path') or ''
+        if raw:
+          try:
+            target = Path(raw).expanduser().resolve()
+          except (OSError, ValueError):
+            return PermissionResultDeny(message=f'Invalid path: {raw!r}')
+          if not target.is_relative_to(_project_root):
+            logger.warning(
+              'Denied %s outside project root %s: %s',
+              tool_name,
+              _project_root,
+              target,
+            )
+            return PermissionResultDeny(
+              message=(
+                f'File access outside the project directory is not allowed. '
+                f'Use a path under {_project_root}.'
+              ),
+            )
+
       return PermissionResultAllow(updated_input=input_data)
 
     # Required for can_use_tool in Python: a PreToolUse hook that keeps the
@@ -428,20 +495,27 @@ async def stream_agent_response(
     async def _keepalive_hook(_input_data, _tool_use_id, _context):
       return {"continue_": True}
 
+    # Always use project settings only. Including "user" inherits the
+    # developer's ~/.claude MCP servers (dozens of plugins locally) and can
+    # stall the chat for minutes before the first token. Skills are already
+    # copied into the project directory.
+    setting_sources = _claude_setting_sources()
+
     options = ClaudeAgentOptions(
       cwd=str(project_dir),
       allowed_tools=allowed_tools,
-      permission_mode='bypassPermissions',  # Auto-accept all tools including MCP
-      can_use_tool=can_use_tool,  # Handle AskUserQuestion gracefully
+      permission_mode='dontAsk',  # Enables can_use_tool path allowlist
+      can_use_tool=can_use_tool,
       hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_keepalive_hook])]},
       resume=session_id,  # Resume from previous session if provided
-      mcp_servers={'databricks': databricks_server},  # In-process SDK tools
+      mcp_servers={},  # Skills + Databricks CLI only (no MCP servers)
       system_prompt=system_prompt,  # Databricks-focused system prompt
-      setting_sources=["user", "project"],  # Load Skills from filesystem
-      env=claude_env,  # Pass Databricks auth settings (ANTHROPIC_AUTH_TOKEN, etc.)
+      setting_sources=setting_sources,  # Skills from project filesystem
+      env=claude_env,  # Deploy uses project apiKeyHelper; local uses FMAPI env.
       include_partial_messages=True,  # Enable token-by-token streaming
       stderr=stderr_callback,  # Capture stderr for debugging
     )
+    logger.warning(f'ClaudeAgentOptions setting_sources={setting_sources}')
 
     # Run agent in fresh event loop to avoid subprocess transport issues (#462)
     # Copy the context to preserve contextvars (Databricks auth) in the new thread
@@ -498,6 +572,11 @@ async def stream_agent_response(
         yield {'type': 'cancelled'}
         break
       elif msg_type == 'error':
+        if claude_stderr_lines and isinstance(msg, Exception):
+          stderr_tail = '\n'.join(claude_stderr_lines[-40:])
+          raise RuntimeError(
+            f'{msg}\n--- Claude stderr ---\n{stderr_tail}'
+          ) from msg
         raise msg
       elif msg_type == 'message':
         # Handle different message types

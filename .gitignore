@@ -19,6 +19,8 @@ lib/
 lib64/
 # Exception: frontend source lib (Python ignores lib/ for build artifacts)
 !databricks-builder-app/client/src/lib/
+# Exception: sourced shell helpers for deploy.sh (not a build artifact)
+!databricks-builder-app/scripts/lib/
 parts/
 sdist/
 var/
@@ -52,6 +54,7 @@ Thumbs.db
 
 # Configuration files with sensitive data
 *conf*.json
+!databricks-builder-app/client/tsconfig.json
 *.secret
 credentials.json
 claude_agent_settings.json

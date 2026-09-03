@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = [".", "packages"]
-include = ["server*", "databricks_tools_core*", "databricks_mcp_server*"]
+include = ["server*", "databricks_tools_core*"]
 exclude = ["client*", "tests*", "scripts*"]
 
 [project]
 name = "databricks-builder-app"
 version = "0.1.0"
-description = "Claude Code MCP Application"
+description = "Skills-driven Databricks builder application"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
@@ -27,12 +27,10 @@ dependencies = [
   "greenlet>=3.0.0",
   "psycopg2-binary>=2.9.11",  # For alembic migrations (sync)
   # Claude Agent SDK (successor to claude-code-sdk)
-  "claude-agent-sdk>=0.1.19",
+  "claude-agent-sdk>=0.2.109",
   "anthropic>=0.94.1",
-  # Databricks MCP tools (databricks-mcp-server installed from sibling dir in dev)
-  "mcp>=1.0.0",
-  "fastmcp>=3.2.4,<4",
-  # databricks-tools-core and databricks-mcp-server are bundled in packages/ directory
+  "pyyaml>=6.0",
+  # databricks_tools_core auth/identity helpers are vendored under packages/
   "requests>=2.31.0",
   # MLflow 3+ for Claude Code tracing (not mlflow[databricks] to avoid litellm)
   # Cap at <3.11 to avoid pre-release resolution via tool.uv.prerelease=allow

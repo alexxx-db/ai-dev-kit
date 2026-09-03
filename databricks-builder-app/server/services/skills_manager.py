@@ -12,99 +12,41 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Skill → MCP tool mapping
-# Maps skill names to their exclusive Databricks MCP tool function names.
-# Tools NOT listed here (sql, compute, file, operation tracking) are always
-# available regardless of which skills are enabled.
+# Skill rename compatibility (databricks-agent-skills / PR #562)
 # ---------------------------------------------------------------------------
-SKILL_TOOL_MAPPING: dict[str, list[str]] = {
-  'databricks-agent-bricks': ['manage_ka', 'manage_mas'],
-  'databricks-aibi-dashboards': ['manage_dashboard'],
-  'databricks-genie': ['manage_genie', 'ask_genie'],
-  'databricks-spark-declarative-pipelines': ['manage_pipeline', 'manage_pipeline_run'],
-  'databricks-model-serving': ['manage_serving_endpoint'],
-  'databricks-jobs': ['manage_jobs', 'manage_job_runs'],
-  'databricks-unity-catalog': [
-    'manage_uc_objects', 'manage_uc_grants', 'manage_uc_storage',
-    'manage_uc_connections', 'manage_uc_tags', 'manage_uc_security_policies',
-    'manage_uc_monitors', 'manage_uc_sharing',
-    'manage_volume_files', 'get_volume_folder_details',
-    'manage_metric_views',
-  ],
-  'databricks-vector-search': [
-    'manage_vs_endpoint', 'manage_vs_index', 'manage_vs_data', 'query_vs_index',
-  ],
-  'databricks-metric-views': ['manage_metric_views'],
-  # Provisioned and Autoscale Lakebase share the core database/sync/credential
-  # tools.  Autoscale additionally claims branch tools.  If either skill is
-  # enabled, the shared tools are available.
-  'databricks-lakebase-provisioned': [
-    'manage_lakebase_database', 'manage_lakebase_sync', 'generate_lakebase_credential',
-  ],
-  'databricks-lakebase-autoscale': [
-    'manage_lakebase_database', 'manage_lakebase_sync', 'generate_lakebase_credential',
-    'manage_lakebase_branch',
-  ],
-  # APX (FastAPI+React) and Python (Dash/Streamlit/etc.) share the same
-  # app lifecycle tools — the skill content differs, not the MCP operations.
-  'databricks-app-apx': ['manage_app'],
-  'databricks-apps-python': ['manage_app'],
+LEGACY_SKILL_ALIASES: dict[str, str] = {
+  'databricks-bundles': 'databricks-dabs',
+  'databricks-spark-declarative-pipelines': 'databricks-pipelines',
+  'databricks-config': 'databricks-core',
+  'databricks': 'databricks-core',
+  'databricks-lakebase-autoscale': 'databricks-lakebase',
+  'databricks-lakebase-provisioned': 'databricks-lakebase',
 }
 
 
-def get_allowed_mcp_tools(
-  all_tool_names: list[str],
-  enabled_skills: list[str] | None = None,
-) -> list[str]:
-  """Filter MCP tool names based on enabled skills.
-
-  Tools mapped to disabled skills are removed. Tools not mapped to any skill
-  (e.g. execute_sql, compute tools) are always kept.
-
-  Args:
-      all_tool_names: Full list of MCP tool names (mcp__databricks__xxx format)
-      enabled_skills: List of enabled skill names, or None for all skills.
-
-  Returns:
-      Filtered list of allowed MCP tool names.
-  """
-  if enabled_skills is None:
-    return all_tool_names
-
-  # Collect tool names that belong to DISABLED skills
-  enabled_set = set(enabled_skills)
-  blocked_tools: set[str] = set()
-  for skill_name, tool_names in SKILL_TOOL_MAPPING.items():
-    if skill_name not in enabled_set:
-      blocked_tools.update(tool_names)
-
-  # Don't block a tool if it's also claimed by an ENABLED skill
-  for skill_name in enabled_skills:
-    for tool_name in SKILL_TOOL_MAPPING.get(skill_name, []):
-      blocked_tools.discard(tool_name)
-
-  # Filter: tool name format is mcp__databricks__{name}
-  prefix = 'mcp__databricks__'
-  return [
-    t for t in all_tool_names
-    if not t.startswith(prefix) or t[len(prefix):] not in blocked_tools
-  ]
+def normalize_skill_name(name: str) -> str:
+  """Map legacy skill names to current databricks-agent-skills names."""
+  return LEGACY_SKILL_ALIASES.get(name, name)
 
 
-# Skills source directories.  install_skills.sh aggregates skills from
-# multiple repos (this repo's databricks-skills/, mlflow/skills, apx) into
-# the app's .claude/skills/ directory.  We check several locations so that
-# the server works both in local development and when deployed.
+def normalize_skill_list(names: list[str] | None) -> list[str] | None:
+  if names is None:
+    return None
+  return [normalize_skill_name(n) for n in names]
+
+
+# Skills source directories.  install_builder_skills.sh installs via
+# `databricks aitools` + MLflow raw-fetch into .claude/skills/.  Deploy
+# bundles skills under ./skills/.  We merge sources into APP_SKILLS_DIR.
 #
 # Candidate source directories (checked in priority order):
-#   1. .claude/skills/ inside the app — populated by install_skills.sh with
-#      the *full* union of Databricks + MLflow + APX skills.
-#   2. Sibling ../../databricks-skills — the repo-local Databricks-only skills.
-#   3. ./skills at app root — the deployed bundle location.
+#   1. ./skills at app root — deployed bundle
+#   2. .claude/skills/ — local install output
+#   3. .databricks/aitools/skills — aitools canonical store
 _APP_ROOT = Path(__file__).parent.parent.parent
-_INSTALLED_SKILLS_DIR = _APP_ROOT / '.claude' / 'skills'
-_DEV_SKILLS_DIR = _APP_ROOT.parent / 'databricks-skills'
 _DEPLOYED_SKILLS_DIR = _APP_ROOT / 'skills'
+_INSTALLED_SKILLS_DIR = _APP_ROOT / '.claude' / 'skills'
+_AITOOLS_SKILLS_DIR = _APP_ROOT / '.databricks' / 'aitools' / 'skills'
 
 # Local cache of skills within this app (copied on startup)
 APP_SKILLS_DIR = _APP_ROOT / 'skills'
@@ -115,16 +57,16 @@ def _non_empty_dir(p: Path) -> bool:
 # Build an ordered list of source directories.  The first directory that
 # contains a given skill wins, so put the most-complete source first.
 _SKILLS_SOURCE_DIRS: list[Path] = []
+if _non_empty_dir(_DEPLOYED_SKILLS_DIR):
+  _SKILLS_SOURCE_DIRS.append(_DEPLOYED_SKILLS_DIR)
 if _non_empty_dir(_INSTALLED_SKILLS_DIR):
   _SKILLS_SOURCE_DIRS.append(_INSTALLED_SKILLS_DIR)
-if _non_empty_dir(_DEV_SKILLS_DIR):
-  _SKILLS_SOURCE_DIRS.append(_DEV_SKILLS_DIR)
-if _non_empty_dir(_DEPLOYED_SKILLS_DIR) and _DEPLOYED_SKILLS_DIR.resolve() != APP_SKILLS_DIR.resolve():
-  _SKILLS_SOURCE_DIRS.append(_DEPLOYED_SKILLS_DIR)
+if _non_empty_dir(_AITOOLS_SKILLS_DIR):
+  _SKILLS_SOURCE_DIRS.append(_AITOOLS_SKILLS_DIR)
 
 # Legacy single-directory reference used by callers that haven't been
 # updated yet.  Points to the first available source.
-SKILLS_SOURCE_DIR = _SKILLS_SOURCE_DIRS[0] if _SKILLS_SOURCE_DIRS else _DEV_SKILLS_DIR
+SKILLS_SOURCE_DIR = _SKILLS_SOURCE_DIRS[0] if _SKILLS_SOURCE_DIRS else _INSTALLED_SKILLS_DIR
 
 
 def _get_enabled_skills() -> list[str] | None:
@@ -136,7 +78,7 @@ def _get_enabled_skills() -> list[str] | None:
   enabled = os.environ.get('ENABLED_SKILLS', '').strip()
   if not enabled:
     return None
-  return [s.strip() for s in enabled.split(',') if s.strip()]
+  return normalize_skill_list([s.strip() for s in enabled.split(',') if s.strip()])
 
 
 def get_available_skills(enabled_skills: list[str] | None = None) -> list[dict]:
@@ -150,6 +92,9 @@ def get_available_skills(enabled_skills: list[str] | None = None) -> list[dict]:
       List of dicts with name, description, and path for each skill
   """
   skills = []
+
+  if enabled_skills is not None:
+    enabled_skills = normalize_skill_list(enabled_skills)
 
   if not APP_SKILLS_DIR.exists():
     logger.warning(f'Skills directory not found: {APP_SKILLS_DIR}')
@@ -206,19 +151,21 @@ def _find_skill_source(skill_name: str) -> Path | None:
 
   Returns the first directory that contains ``skill_name/SKILL.md``.
   """
+  normalized = normalize_skill_name(skill_name)
   for src_dir in _SKILLS_SOURCE_DIRS:
-    candidate = src_dir / skill_name
-    if candidate.is_dir() and (candidate / 'SKILL.md').exists():
-      return candidate
+    for candidate_name in (skill_name, normalized):
+      candidate = src_dir / candidate_name
+      if candidate.is_dir() and (candidate / 'SKILL.md').exists():
+        return candidate
   return None
 
 
 def copy_skills_to_app() -> bool:
   """Copy skills from source directories to app's skills directory.
 
-  Skills may originate from multiple locations (the repo's databricks-skills/,
-  the .claude/skills/ directory populated by install_skills.sh, or the
-  deployed skills bundle).  This function merges them into APP_SKILLS_DIR.
+  Skills may originate from the deployed bundle (./skills/), .claude/skills/
+  populated by install_builder_skills.sh, or the aitools canonical store.
+  This function merges them into APP_SKILLS_DIR.
 
   Called on server startup to ensure we have the latest skills.
   Only copies skills listed in ENABLED_SKILLS env var (if set).
@@ -260,7 +207,7 @@ def copy_skills_to_app() -> bool:
         raise SkillNotFoundError(
           f"Skill '{skill_name}' not found in any source directory. "
           f"Searched: {searched}. "
-          f"Check ENABLED_SKILLS in your .env file."
+          f"Run scripts/install_builder_skills.sh or check ENABLED_SKILLS in your .env file."
         )
 
   try:
@@ -308,6 +255,9 @@ def copy_skills_to_project(project_dir: Path, enabled_skills: list[str] | None =
   Returns:
       True if successful, False otherwise
   """
+  if enabled_skills is not None:
+    enabled_skills = normalize_skill_list(enabled_skills)
+
   if not APP_SKILLS_DIR.exists():
     logger.warning('App skills directory not found, trying to copy from source')
     copy_skills_to_app()
@@ -365,6 +315,9 @@ def sync_project_skills(project_dir: Path, enabled_skills: list[str] | None = No
   Returns:
       True if successful, False otherwise
   """
+  if enabled_skills is not None:
+    enabled_skills = normalize_skill_list(enabled_skills)
+
   if not APP_SKILLS_DIR.exists():
     logger.warning('App skills directory not found')
     return False
@@ -517,7 +470,7 @@ def get_project_enabled_skills(project_dir: Path) -> list[str] | None:
   try:
     data = json.loads(config_path.read_text())
     if isinstance(data, list):
-      return data
+      return normalize_skill_list(data)
     return None
   except (json.JSONDecodeError, OSError) as e:
     logger.warning(f'Failed to read enabled skills config: {e}')

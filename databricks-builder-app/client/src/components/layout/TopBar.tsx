@@ -1,5 +1,8 @@
-import { Link, useLocation } from 'react-router-dom';
-import { useUser } from '@/contexts/UserContext';
+import { ChevronRight } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { useUser } from "@/contexts/UserContext";
+import { cn } from "@/lib/utils";
 
 interface TopBarProps {
   projectName?: string;
@@ -9,19 +12,25 @@ export function TopBar({ projectName }: TopBarProps) {
   const location = useLocation();
   const { user } = useUser();
 
-  // Extract username from email for display
-  const displayName = user?.split('@')[0] || '';
+  const displayName = user?.split("@")[0] || "";
+  const navItems = [
+    { label: "Projects", to: "/", isActive: location.pathname === "/" },
+    { label: "Docs", to: "/doc", isActive: location.pathname === "/doc" },
+  ];
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-30 h-[var(--header-height)] bg-[var(--color-background)]/70 backdrop-blur-xl backdrop-saturate-150 border-b border-[var(--color-border)]/40 shadow-sm">
-      <div className="flex items-center justify-between h-full px-4 lg:px-6">
-        {/* Left Section - Logo & Name */}
-        <div className="flex items-center gap-4">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-3">
-            <div className="w-8 h-8 flex items-center justify-center">
+    <header className="fixed inset-x-0 top-0 z-30 h-[var(--header-height)] border-b border-[var(--color-border)] bg-[var(--color-bg-elevated)]/95 shadow-[var(--shadow-sm)] backdrop-blur-md">
+      <div className="flex h-full min-w-0 items-center gap-2 px-2.5 sm:px-4 lg:px-5">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Link
+            to="/"
+            aria-label="Builder home"
+            className="flex shrink-0 items-center gap-2 rounded-md text-[var(--color-text-heading)]"
+          >
+            <span className="flex h-7 w-7 items-center justify-center">
               <svg
-                className="w-7 h-7"
+                aria-hidden="true"
+                className="h-6 w-6"
                 viewBox="33 0 28 31"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
@@ -31,71 +40,64 @@ export function TopBar({ projectName }: TopBarProps) {
                   fill="#FF3621"
                 />
               </svg>
-            </div>
-            <h1 className="text-xl font-semibold tracking-tight text-[var(--color-text-heading)]">
-              Databricks AI Dev Kit
-            </h1>
+            </span>
+            <span className="text-[15px] font-semibold tracking-[-0.01em]">
+              Builder
+            </span>
           </Link>
 
-          {/* Project Name Breadcrumb */}
           {projectName && (
-            <>
-              <span className="text-[var(--color-text-muted)]">/</span>
-              <span className="text-[var(--color-text-primary)] font-medium truncate max-w-[200px]">
+            <div
+              aria-label={`Current project: ${projectName}`}
+              className="hidden min-w-0 items-center gap-1.5 border-l border-[var(--color-border)] pl-2 text-sm md:flex"
+            >
+              <ChevronRight
+                aria-hidden="true"
+                className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]"
+              />
+              <span className="max-w-[12rem] truncate font-medium text-[var(--color-text-secondary)] lg:max-w-[18rem]">
                 {projectName}
               </span>
-            </>
+            </div>
           )}
         </div>
 
-        {/* Right Section - Navigation & User */}
-        <div className="flex items-center gap-6">
-          {/* Navigation */}
-          <nav className="flex items-center gap-1">
-            <Link
-              to="/"
-              className={`
-                relative px-4 py-2 text-sm font-medium transition-colors duration-300
-                ${
-                  location.pathname === '/'
-                    ? 'text-[var(--color-foreground)]'
-                    : 'text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]'
-                }
-              `}
-            >
-              <span className="relative z-10">Projects</span>
-              {location.pathname === '/' && (
-                <span className="absolute bottom-1.5 left-4 right-4 h-0.5 bg-[var(--color-accent-primary)] rounded-full" />
-              )}
-            </Link>
-            <Link
-              to="/doc"
-              className={`
-                relative px-4 py-2 text-sm font-medium transition-colors duration-300
-                ${
-                  location.pathname === '/doc'
-                    ? 'text-[var(--color-foreground)]'
-                    : 'text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]'
-                }
-              `}
-            >
-              <span className="relative z-10">Docs</span>
-              {location.pathname === '/doc' && (
-                <span className="absolute bottom-1.5 left-4 right-4 h-0.5 bg-[var(--color-accent-primary)] rounded-full" />
-              )}
-            </Link>
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <nav aria-label="Primary navigation" className="flex items-center">
+            {navItems.map(({ label, to, isActive }) => (
+              <Link
+                key={to}
+                to={to}
+                aria-current={isActive ? "page" : undefined}
+                className={cn(
+                  "relative rounded-md px-2 py-1.5 text-xs font-medium transition-colors sm:px-2.5 sm:text-sm",
+                  isActive
+                    ? "bg-[var(--color-bg-secondary)] text-[var(--color-text-heading)]"
+                    : "text-[var(--color-text-muted)] hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text-primary)]",
+                )}
+              >
+                {label}
+                {isActive && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-x-2 bottom-0 h-px bg-[var(--color-accent-primary)]"
+                  />
+                )}
+              </Link>
+            ))}
           </nav>
 
-          {/* User Email */}
+          <ThemeSwitcher />
+
           {displayName && (
             <div
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--color-bg-secondary)] border border-[var(--color-border)] shadow-sm"
+              className="hidden min-w-0 items-center gap-2 border-l border-[var(--color-border)] pl-2 lg:flex"
               title={user || undefined}
             >
-              <div className="w-6 h-6 rounded-full bg-[var(--color-accent-primary)] flex items-center justify-center text-white text-xs font-medium">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-tertiary)] text-xs font-semibold text-[var(--color-text-heading)] ring-1 ring-inset ring-[var(--color-border)]">
                 {displayName.charAt(0).toUpperCase()}
-              </div>
-              <span className="text-sm text-[var(--color-text-primary)] max-w-[120px] truncate">
+              </span>
+              <span className="max-w-[7rem] truncate text-xs font-medium text-[var(--color-text-secondary)] xl:max-w-[10rem]">
                 {displayName}
               </span>
             </div>

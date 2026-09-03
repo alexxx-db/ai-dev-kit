@@ -3,9 +3,9 @@
 This directory shows how to embed `ai-dev-kit` into your own application.
 
 **What you get:** The same Claude Agent SDK-based agent used by `databricks-builder-app`, with:
-- Databricks MCP tools (SQL, clusters, jobs, pipelines, Unity Catalog, etc.)
-- Skills for guided development (SDP, SDK patterns, MLflow, etc.)
-- Multi-user auth support via contextvars
+- Databricks skills for guided development (jobs, pipelines, SQL, Unity Catalog, MLflow, etc.)
+- Databricks CLI and Python SDK execution through the built-in `Bash` tool
+- Project-scoped, per-request Databricks authentication
 
 ## Prerequisites
 
@@ -31,7 +31,18 @@ cd /path/to/your/project/_integration-example
 ./setup.sh
 ```
 
-This creates a virtual environment, installs dependencies, and sets up skills.
+This creates a virtual environment, installs dependencies, and installs skills
+via `install_builder_skills.sh`. Skill install failures abort setup (no silent
+empty- or partial-skills success).
+
+MLflow skills are fetched from a pinned commit so repeated installs of the same
+builder-app revision produce identical content; set `MLFLOW_REF` to track a
+different ref. Escape hatches when a source is unreachable:
+
+| Variable | Effect |
+| --- | --- |
+| `ALLOW_PARTIAL_MLFLOW_SKILLS=1` | Accept fewer MLflow skills than expected |
+| `ALLOW_STALE_AGENT_SKILLS=1` | Use the offline agent-skills snapshot when the CLI inventory is unreadable |
 
 ### 3. Configure credentials
 
@@ -64,8 +75,8 @@ python example_integration.py
 
 This integration uses:
 - **Claude Agent SDK** (`claude-agent-sdk`) - Anthropic's SDK for running Claude as an agentic assistant
-- **Databricks MCP Tools** (`databricks-mcp-server`) - Tools loaded in-process via MCP protocol
-- **Skills** - Markdown files in `.claude/skills/` that provide domain-specific guidance
+- **Databricks auth helpers** (`packages/databricks_tools_core`) - Shared host/token helpers for the app and CLI subprocess
+- **Skills** - Markdown files in `.claude/skills/` with Databricks CLI / Python SDK workflows
 
 The `stream_agent_response` function is the same one used by `databricks-builder-app`.
 
@@ -85,7 +96,8 @@ from databricks_tools_core import set_databricks_auth, clear_databricks_auth
 import asyncio
 
 async def run_agent(message: str):
-    # Set Databricks auth for this request (passed to MCP tools)
+    # Set Databricks auth for app-side helpers. stream_agent_response also
+    # provisions a project-scoped CLI profile for the Claude subprocess.
     set_databricks_auth(
         host="https://your-workspace.cloud.databricks.com",
         token="dapi..."
@@ -129,14 +141,14 @@ The agent streams these event types:
 
 ### Available Tools
 
-The agent has access to Databricks tools via MCP:
+The agent registers only Claude's built-in project tools:
 
-- **SQL**: `execute_sql`, `execute_sql_multi`, `list_warehouses`, `get_table_details`
-- **Compute**: `execute_code`, `manage_cluster`, `manage_sql_warehouse`, `list_compute`
-- **Jobs**: `create_job`, `run_job_now`, `wait_for_run`, `list_runs`
-- **Pipelines**: `create_or_update_pipeline`, `start_update`, `get_update`
-- **Files**: `upload_to_workspace`
-- **Unity Catalog**: Catalog, schema, table, volume operations
+- **Skill**: loads the relevant Databricks workflow and references
+- **Bash**: runs `databricks` CLI commands or short Python SDK scripts
+- **Read / Write / Edit / Glob / Grep**: manages files under the project root
+
+`mcp_servers={}` is intentional. Databricks capabilities come from the installed
+skills and the authenticated CLI/SDK rather than `mcp__databricks__*` tools.
 
 ### Configuring Context
 
@@ -202,9 +214,14 @@ source .venv/bin/activate
 
 Check that your `DATABRICKS_HOST` doesn't have a trailing slash and your token is valid.
 
-### Tools timing out
+### Databricks commands failing
 
-Long-running tools (>10s) automatically switch to async mode. The agent will return an `operation_id` that you can poll with `check_operation_status`.
+Verify `databricks -v`, confirm the request host/token are present, and inspect
+the streamed `Bash` result. Long-running operations should use the polling
+commands documented by the relevant skill. On Databricks Apps, workspace CLI
+auth must come from `X-Forwarded-Access-Token` (or an explicit
+`target_databricks_token` for cross-workspace calls) — the agent will not fall
+back to the app service principal.
 
 ## File Structure
 

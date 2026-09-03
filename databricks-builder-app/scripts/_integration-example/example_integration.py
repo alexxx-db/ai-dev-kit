@@ -3,7 +3,7 @@
 Minimal example of embedding ai-dev-kit into a custom app.
 
 This runs the same Claude Agent SDK-based agent used by databricks-builder-app,
-with Databricks MCP tools and skills loaded. The agent can:
+with Databricks skills and authenticated CLI / Python SDK access. The agent can:
 - Execute SQL queries via warehouses
 - Run Python/PySpark on clusters
 - Manage Unity Catalog objects
@@ -23,13 +23,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import the same agent service used by databricks-builder-app
-# This uses claude-agent-sdk with Databricks MCP tools loaded in-process
+# This uses claude-agent-sdk with project skills and Bash; mcp_servers is empty.
 from server.services.agent import stream_agent_response
 from databricks_tools_core import set_databricks_auth, clear_databricks_auth
 
 
 async def run_agent(message: str, project_id: str = "demo") -> None:
-    """Run the Claude agent with Databricks tools and stream output."""
+    """Run the CLI-only Claude agent and stream output."""
     
     # Get credentials from environment
     host = os.environ.get("DATABRICKS_HOST")
@@ -41,7 +41,7 @@ async def run_agent(message: str, project_id: str = "demo") -> None:
     
     print(f"Databricks workspace: {host}")
     print(f"Message: {message}")
-    print("Running Claude agent with Databricks MCP tools...")
+    print("Running Claude agent with Databricks skills + CLI...")
     print("-" * 50)
     
     # Set auth context for this request

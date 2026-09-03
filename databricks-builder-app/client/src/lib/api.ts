@@ -9,7 +9,10 @@ const API_BASE = '/api';
 
 async function request<T>(
   path: string,
-  options: RequestInit & { method?: string; body?: unknown } = {}
+  options: Omit<RequestInit, 'body' | 'method'> & {
+    method?: string;
+    body?: unknown;
+  } = {}
 ): Promise<T> {
   const { method = 'GET', body, ...rest } = options;
   const init: RequestInit = {

@@ -113,3 +113,33 @@ async def delete_conversation(request: Request, project_id: str, conversation_id
 
   logger.info(f'Deleted conversation {conversation_id}')
   return {'success': True, 'deleted_conversation_id': conversation_id}
+
+
+@router.post('/projects/{project_id}/conversations/{conversation_id}/session/clear')
+async def clear_conversation_session(
+  request: Request,
+  project_id: str,
+  conversation_id: str,
+):
+  """Clear Claude session resume state and delete stored messages.
+
+  Use when resume is hopeless (stale transcript) or the user wants a
+  fresh agent context while keeping the conversation row.
+  """
+  user_email = await get_current_user(request)
+  storage = ConversationStorage(user_email, project_id)
+
+  deleted_count = await storage.clear_session(conversation_id)
+  if deleted_count is None:
+    raise HTTPException(status_code=404, detail=f'Conversation {conversation_id} not found')
+
+  logger.info(
+    'Cleared session for conversation %s (%s messages deleted)',
+    conversation_id,
+    deleted_count,
+  )
+  return {
+    'success': True,
+    'conversation_id': conversation_id,
+    'deleted_count': deleted_count,
+  }

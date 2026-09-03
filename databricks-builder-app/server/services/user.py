@@ -121,9 +121,8 @@ async def get_current_user(request: Request) -> str:
 async def get_current_token(request: Request) -> str | None:
   """Get the current user's Databricks access token for workspace operations.
 
-  In production (Databricks Apps), returns None to use SP OAuth credentials
-  from environment variables (set by Databricks Apps automatically).
-  In development, uses DATABRICKS_TOKEN env var.
+  In Databricks Apps, prefer the request-scoped token injected by the proxy.
+  In development, use DATABRICKS_TOKEN from the selected local profile.
 
   Args:
       request: FastAPI Request object
@@ -131,9 +130,16 @@ async def get_current_token(request: Request) -> str | None:
   Returns:
       Access token string, or None to use default credentials
   """
-  # In production, return None to let WorkspaceClient use SP OAuth from env
+  forwarded_token = request.headers.get('X-Forwarded-Access-Token')
+  if forwarded_token:
+    logger.debug('Got request-scoped token from X-Forwarded-Access-Token')
+    return forwarded_token
+
   if not _is_local_development():
-    logger.debug('Production mode: using SP OAuth credentials from environment')
+    logger.warning(
+      'Production request has no X-Forwarded-Access-Token; '
+      'returning None so callers can fail closed instead of using app SP credentials'
+    )
     return None
 
   # Fall back to env var for development

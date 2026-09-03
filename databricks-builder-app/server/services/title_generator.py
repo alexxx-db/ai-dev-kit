@@ -53,8 +53,11 @@ def _create_client(
     base_url = f'https://{host}/serving-endpoints/anthropic'
 
     return anthropic.AsyncAnthropic(
-      api_key=databricks_token,
+      auth_token=databricks_token,
       base_url=base_url,
+      default_headers={
+        'x-databricks-use-coding-agent-mode': 'true',
+      },
     )
 
   # Fall back to environment-based configuration
