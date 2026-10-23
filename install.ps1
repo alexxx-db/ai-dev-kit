@@ -60,6 +60,11 @@ $InstallDir = if ($env:AIDEVKIT_HOME) { $env:AIDEVKIT_HOME } else { Join-Path $e
 $MinCliVersion = "0.278.0"
 # Agent skills are delegated to `databricks aitools`, which ships with CLI v1.0.0+
 $MinAitoolsCliVersion = "1.0.0"
+# CLI versions that added these `aitools --agents` targets. An agent the CLI
+# doesn't know fails the whole `aitools install` ("unknown agent"), so below its
+# floor the tool is left out of --agents and gets linked/mirrored copies instead.
+$MinAitoolsGeminiCliVersion = "1.12.0"
+$MinAitoolsKiroCliVersion = "1.20.0"
 
 # ─── Defaults ─────────────────────────────────────────────────
 # DEVKIT_* env vars mirror the bash installer so both honor the same config.
@@ -464,6 +469,30 @@ function Get-LeftoversSummary {
     return @($lines)
 }
 
+# Gemini CLI's global skills dir: <GEMINI_CLI_HOME>\.gemini\skills when that is
+# set, else ~\.gemini\skills. `databricks aitools` resolves it the same way, so
+# global installs must too or they link a second, untracked copy under ~\.gemini.
+# Path.Combine, not Join-Path: Join-Path throws when the drive doesn't exist.
+function Get-GeminiGlobalSkillsDir {
+    $root = if ($env:GEMINI_CLI_HOME) { $env:GEMINI_CLI_HOME } else { $env:USERPROFILE }
+    return [System.IO.Path]::Combine($root, ".gemini", "skills")
+}
+
+# The relocated Gemini skills dir when GEMINI_CLI_HOME moves it, else nothing.
+# Scans add it on top of ~\.gemini\skills, which can still hold older installs.
+# Both sides are normalized so a different spelling of the profile dir (slashes,
+# trailing separator) isn't scanned twice, which would make uninstall delete the
+# same folder twice and fail on the second Remove-Item.
+function Get-GeminiRelocatedSkillsDir {
+    $dir = Get-GeminiGlobalSkillsDir
+    $default = [System.IO.Path]::Combine($env:USERPROFILE, ".gemini", "skills")
+    $norm = { param($p) [System.IO.Path]::GetFullPath($p).TrimEnd('\', '/') }
+    # GetFullPath throws on a malformed path (PS 5.1); fall back to the raw compare
+    try { $moved = (& $norm $dir) -ne (& $norm $default) } catch { $moved = $dir -ne $default }
+    if ($moved) { return $dir }
+    return @()
+}
+
 # Project-scope artifacts under $Dir (what a project uninstall from that dir removes).
 function Get-ProjectLeftoversSummary {
     param([string]$Dir)
@@ -482,6 +511,7 @@ function Get-GlobalLeftoversSummary {
     $h = $env:USERPROFILE
     $installDir = if ($env:AIDEVKIT_HOME) { $env:AIDEVKIT_HOME } else { Join-Path $h ".ai-dev-kit" }
     $skillRoots = @(".claude\skills",".cursor\skills",".github\skills",".agents\skills",".gemini\skills",".gemini\antigravity\skills",".codeium\windsurf\skills",".config\opencode\skills",".kiro\skills") | ForEach-Object { Join-Path $h $_ }
+    $skillRoots = @($skillRoots) + @(Get-GeminiRelocatedSkillsDir)
     $mcpTargets = @(
         @{ Path=(Join-Path $h ".claude.json"); Kind="json"; Top="mcpServers" }, @{ Path=(Join-Path $h ".codex\config.toml"); Kind="toml" }, @{ Path=(Join-Path $h ".gemini\settings.json"); Kind="json"; Top="mcpServers" },
         @{ Path=(Join-Path $h ".gemini\antigravity\mcp_config.json"); Kind="json"; Top="mcpServers" }, @{ Path=(Join-Path $h ".codeium\windsurf\mcp_config.json"); Kind="json"; Top="mcpServers" },
@@ -632,7 +662,7 @@ function Invoke-Uninstall {
             (Join-Path $home_ ".gemini\skills"), (Join-Path $home_ ".gemini\antigravity\skills"),
             (Join-Path $home_ ".codeium\windsurf\skills"), (Join-Path $home_ ".config\opencode\skills"),
             (Join-Path $home_ ".kiro\skills")
-        )
+        ) + @(Get-GeminiRelocatedSkillsDir)
         $mcpTargets = @(
             @{ Path=(Join-Path $home_ ".claude\mcp.json"); Kind="json"; Top="mcpServers" },
             @{ Path=(Join-Path $home_ ".codex\config.toml"); Kind="toml" },
@@ -1206,21 +1236,15 @@ function Test-Dependencies {
 
     # Databricks CLI
     if (Get-Command databricks -ErrorAction SilentlyContinue) {
-        try {
-            $cliOutput = & databricks --version 2>&1
-            if ($cliOutput -match '(\d+\.\d+\.\d+)') {
-                $cliVersion = $Matches[1]
-                if ([version]$cliVersion -ge [version]$MinCliVersion) {
-                    Write-Ok "Databricks CLI v$cliVersion"
-                } else {
-                    Write-Warn "Databricks CLI v$cliVersion is outdated (minimum: v$MinCliVersion)"
-                    Write-Msg "  Upgrade: winget upgrade Databricks.DatabricksCLI"
-                }
-            } else {
-                Write-Warn "Could not determine Databricks CLI version"
-            }
-        } catch {
+        $cliVersion = Get-DatabricksCliVersion
+        $parsed = $null
+        if (-not $cliVersion -or -not [version]::TryParse($cliVersion, [ref]$parsed)) {
             Write-Warn "Could not determine Databricks CLI version"
+        } elseif ($parsed -ge [version]$MinCliVersion) {
+            Write-Ok "Databricks CLI v$cliVersion"
+        } else {
+            Write-Warn "Databricks CLI v$cliVersion is outdated (minimum: v$MinCliVersion)"
+            Write-Msg "  Upgrade: winget upgrade Databricks.DatabricksCLI"
         }
     } else {
         Write-Warn "Databricks CLI not found. Install: winget install Databricks.DatabricksCLI"
@@ -1674,6 +1698,26 @@ function Get-AgentBInventory {
     }
 }
 
+# Installed Databricks CLI version (e.g. 1.20.0), or "" if the CLI is missing.
+# stderr is dropped (not merged) so an update notice can't throw under the
+# script's EAP=Stop on Windows PowerShell 5.1, and the output is joined so
+# -match runs on one string and sets $Matches. Prefers the "Databricks CLI vX.Y.Z"
+# line so a version in an update notice can't be picked up instead.
+function Get-DatabricksCliVersion {
+    if (-not (Get-Command databricks -ErrorAction SilentlyContinue)) { return "" }
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    try {
+        $cliOutput = (& databricks --version 2>$null) -join "`n"
+    } catch {
+        $cliOutput = ""
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
+    if ($cliOutput -match 'Databricks CLI v(\d+\.\d+\.\d+)') { return $Matches[1] }
+    if ($cliOutput -match '(\d+\.\d+\.\d+)') { return $Matches[1] }
+    return ""
+}
+
 # Gate for `databricks aitools` (ships with the Databricks CLI v1.0.0+).
 # Interactive: offers to run the upgrade and re-checks in a loop.
 # Silent/non-interactive: errors out with instructions.
@@ -1681,13 +1725,7 @@ function Get-AgentBInventory {
 function Confirm-AitoolsCli {
     $attempts = 0
     while ($true) {
-        $cliVersion = ""
-        if (Get-Command databricks -ErrorAction SilentlyContinue) {
-            try {
-                $cliOutput = & databricks --version 2>&1
-                if ($cliOutput -match '(\d+\.\d+\.\d+)') { $cliVersion = $Matches[1] }
-            } catch {}
-        }
+        $cliVersion = Get-DatabricksCliVersion
         if ($cliVersion -and ([version]$cliVersion -ge [version]$MinAitoolsCliVersion)) {
             return $true
         }
@@ -1734,9 +1772,13 @@ function Confirm-AitoolsCli {
 }
 
 # Map selected tools to `aitools --agents` tokens. Tools aitools doesn't install
-# for are handled by Send-AgentSkills (which links every selected tool's dir).
+# for (Windsurf, and Gemini/Kiro on a CLI below their floor) are handled by
+# Send-AgentSkills (which links every selected tool's dir). -CliVersion
+# optionally overrides the installed CLI version (dry run).
 function Resolve-AitoolsAgents {
+    param([string]$CliVersion)
     $agents = @()
+    $cliVersion = if ($CliVersion) { $CliVersion } else { Get-DatabricksCliVersion }
     foreach ($tool in ($script:Tools -split ' ')) {
         switch ($tool) {
             "claude"      { $agents += "claude-code" }
@@ -1745,14 +1787,16 @@ function Resolve-AitoolsAgents {
             "codex"       { $agents += "codex" }
             "opencode"    { $agents += "opencode" }
             "antigravity" { $agents += "antigravity" }
+            "gemini"      { if ($cliVersion -and ([version]$cliVersion -ge [version]$MinAitoolsGeminiCliVersion)) { $agents += "gemini" } }
+            "kiro"        { if ($cliVersion -and ([version]$cliVersion -ge [version]$MinAitoolsKiroCliVersion)) { $agents += "kiro" } }
         }
     }
     $script:AitoolsAgents = ($agents -join ',')
 }
 
 # Skills dir for every selected tool (deduped). aitools only fans out to some
-# agents (e.g. project scope: just Claude Code + Cursor), so we link the
-# canonical store into every selected tool's dir ourselves.
+# agents (e.g. project scope: Claude Code, Gemini and Kiro on current CLIs), so
+# we link the canonical store into every selected tool's dir ourselves.
 function Get-AgentSkillTargetDirs {
     param([string]$BaseDir)
     $dirs = @()
@@ -1762,7 +1806,10 @@ function Get-AgentSkillTargetDirs {
             "cursor"   { $dirs += Join-Path $BaseDir ".cursor\skills" }
             "copilot"  { $dirs += Join-Path $BaseDir ".github\skills" }
             "codex"    { $dirs += Join-Path $BaseDir ".agents\skills" }
-            "gemini"   { $dirs += Join-Path $BaseDir ".gemini\skills" }
+            "gemini"   {
+                if ($script:Scope -eq "global") { $dirs += Get-GeminiGlobalSkillsDir }
+                else { $dirs += Join-Path $BaseDir ".gemini\skills" }
+            }
             "antigravity" {
                 if ($script:Scope -eq "global") { $dirs += Join-Path $env:USERPROFILE ".gemini\antigravity\skills" }
                 else { $dirs += Join-Path $BaseDir ".agents\skills" }
@@ -1842,8 +1889,8 @@ function Install-AgentBSkills {
     # `databricks aitools install` define the full set itself (its default = every
     # stable skill; --experimental adds the rest). This installs the plugin for
     # agents that support it (Claude Code / Codex / Copilot) and raw files for the
-    # others, exactly as the CLI intends. Tools aitools can't target
-    # (Gemini/Windsurf/Kiro) are still mirrored the same set.
+    # others, exactly as the CLI intends. Tools aitools can't target (Windsurf,
+    # and Gemini/Kiro on an older CLI) are still mirrored the same set.
     if ($script:SelectedAllAgentB) {
         Install-AgentBAll -BaseDir $BaseDir
         if (-not (Test-Path $script:StateDir)) {
@@ -1885,8 +1932,8 @@ function Install-AgentBSkills {
         Write-Ok "Agent skills ($count) installed -- manage with databricks aitools list|update|uninstall"
     }
 
-    # aitools only installs for some agents (project scope: just Claude Code +
-    # Cursor). Link the canonical store into every other selected tool's dir.
+    # aitools only installs for some agents (project scope: Claude Code, Gemini
+    # and Kiro). Link the canonical store into every other selected tool's dir.
     Send-AgentSkills -BaseDir $BaseDir -SkillsCsv $skillsCsv -NeedsExperimental $needsExperimental
 
     # Record the selection so a future profile change can uninstall dropped skills
@@ -2127,8 +2174,8 @@ function Send-AgentBAll {
 
 # Link the agent skills into every selected tool's skills dir from the canonical
 # store, so tools aitools doesn't install for (project scope: everything except
-# Claude Code + Cursor; plus Gemini/Windsurf/Kiro, which aitools never targets)
-# still get the skills. Entries aitools already created are left to aitools.
+# Claude Code, Gemini and Kiro; plus Windsurf, and Gemini/Kiro on a CLI below
+# their floor) still get the skills. Entries aitools already created are left to aitools.
 # Symlink creation can require elevated privileges on Windows, so fall back to
 # copying. If no aitools-supported agent was selected there is no persistent
 # store, so stage a throwaway install in a temp dir and copy real files from it.
@@ -2317,13 +2364,7 @@ function Write-Lockfile {
         }
     }
     if ($script:SelectedAgentBSkills.Count -gt 0) {
-        $cliVersion = ""
-        if (Get-Command databricks -ErrorAction SilentlyContinue) {
-            try {
-                $cliOutput = & databricks --version 2>&1
-                if ($cliOutput -match '(\d+\.\d+\.\d+)') { $cliVersion = $Matches[1] }
-            } catch {}
-        }
+        $cliVersion = Get-DatabricksCliVersion
         $sources["databricks/databricks-agent-skills"] = [ordered]@{
             install_method = "databricks-aitools"
             cli_version    = $cliVersion
@@ -2338,13 +2379,27 @@ function Write-Lockfile {
 
 # ─── Dry run ──────────────────────────────────────────────────
 function Show-DryRunReport {
-    Resolve-AitoolsAgents
+    # A real run gates agent skills on Confirm-AitoolsCli, which first offers to
+    # upgrade a missing or pre-aitools CLI to the latest release. Preview that
+    # outcome, not today's CLI. The latest CLI clears every agent floor, so the
+    # highest floor (Kiro's) stands in for it.
+    $cliVersion = ""
+    $upgradeFirst = $false
+    if ($script:SelectedAllAgentB -or $script:SelectedAgentBSkills.Count -gt 0) {
+        $cliVersion = Get-DatabricksCliVersion
+        $upgradeFirst = -not ($cliVersion -and ([version]$cliVersion -ge [version]$MinAitoolsCliVersion))
+    }
+    if ($upgradeFirst) { Resolve-AitoolsAgents -CliVersion $MinAitoolsKiroCliVersion } else { Resolve-AitoolsAgents }
     Write-Host ""
     Write-Host "Dry run -- nothing was installed" -ForegroundColor White
     Write-Host "--------------------------------"
     $mlflowList = if ($script:SelectedMlflowSkills.Count -gt 0) { $script:SelectedMlflowSkills -join ' ' } else { "<none>" }
     $mlflowRefDisplay = if ($script:MlflowResolvedRef) { $script:MlflowResolvedRef } else { "n/a" }
     Write-Msg "MLflow skills @ ${mlflowRefDisplay}: $mlflowList"
+    if ($upgradeFirst) {
+        $found = if ($cliVersion) { "v$cliVersion is too old" } else { "not found" }
+        Write-Warn "Databricks CLI ${found}: a real run first offers to upgrade it to the latest CLI (non-interactive runs stop with upgrade steps). The plan below assumes the upgraded CLI is v$MinAitoolsKiroCliVersion+, new enough for every agent."
+    }
     if ($script:SelectedAllAgentB) {
         # "All" path: native install (plugin for Claude/Codex/Copilot, raw files
         # for the rest) with no --skills list; --experimental unless opted out.
@@ -2392,7 +2447,10 @@ function Install-Skills {
             "cursor" { $dirs += Join-Path $BaseDir ".cursor\skills" }
             "copilot" { $dirs += Join-Path $BaseDir ".github\skills" }
             "codex"   { $dirs += Join-Path $BaseDir ".agents\skills" }
-            "gemini"  { $dirs += Join-Path $BaseDir ".gemini\skills" }
+            "gemini"  {
+                if ($script:Scope -eq "global") { $dirs += Get-GeminiGlobalSkillsDir }
+                else { $dirs += Join-Path $BaseDir ".gemini\skills" }
+            }
             "antigravity" {
                 if ($script:Scope -eq "global") {
                     $dirs += Join-Path $env:USERPROFILE ".gemini\antigravity\skills"
@@ -2739,7 +2797,7 @@ function Test-PriorInstall {
             (Join-Path $home_ ".gemini\skills"), (Join-Path $home_ ".gemini\antigravity\skills"),
             (Join-Path $home_ ".codeium\windsurf\skills"), (Join-Path $home_ ".config\opencode\skills"),
             (Join-Path $home_ ".kiro\skills")
-        )
+        ) + @(Get-GeminiRelocatedSkillsDir)
     } else {
         $roots = @(
             (Join-Path $baseDir ".claude\skills"), (Join-Path $baseDir ".cursor\skills"),
