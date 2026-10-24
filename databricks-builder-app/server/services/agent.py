@@ -48,8 +48,9 @@ from databricks_tools_core.auth import set_databricks_auth, clear_databricks_aut
 
 from .backup_manager import ensure_project_directory as _ensure_project_directory
 from .backup_manager import ensure_project_directory_async as _ensure_project_directory_async
-from .cli_auth import build_cli_auth_env
+from .cli_auth import AUTH_FILE_NAME, build_cli_auth_env
 from .fmapi_auth import (
+  TOKEN_FILE_NAME,
   ensure_project_disables_mcp,
   is_deployed_mode,
   provision_project_files,
@@ -284,6 +285,37 @@ def _run_agent_in_fresh_loop(message, options, result_queue, context, is_cancell
   context.run(run_with_context)
 
 
+# File tools confined to the project directory. Bash is NOT path-scoped:
+# every project shares one OS user, so a deployment is a single trust domain
+# (see README "Security model").
+_PATH_TOOLS = {'Read', 'Write', 'Edit', 'NotebookEdit', 'Glob', 'Grep'}
+
+
+def _path_denial(project_root: Path, tool_name: str, input_data: dict) -> str | None:
+  """Return a denial message if a file tool targets a path outside project_root."""
+  if tool_name not in _PATH_TOOLS:
+    return None
+  raw = (
+    input_data.get('file_path')
+    or input_data.get('notebook_path')
+    or input_data.get('path')
+    or ''
+  )
+  if not raw:
+    return None
+  try:
+    target = (project_root / Path(raw).expanduser()).resolve()
+  except (OSError, ValueError):
+    return f'Invalid path: {raw!r}'
+  if target.is_relative_to(project_root):
+    return None
+  logger.warning('Denied %s outside project root %s: %s', tool_name, project_root, target)
+  return (
+    f'File access outside the project directory is not allowed. '
+    f'Use a path under {project_root}.'
+  )
+
+
 def _process_tool_result(block: ToolResultBlock, ask_user_tool_ids: set[str]) -> dict:
   """Extract and normalize content from a ToolResultBlock for streaming."""
   content = block.content
@@ -361,7 +393,7 @@ async def stream_agent_response(
   Yields:
       Event dicts with 'type' field for frontend consumption
   """
-  project_dir = get_project_directory(project_id)
+  project_dir = await get_project_directory_async(project_id)
 
   if session_id:
     logger.info(f'Resuming session {session_id} in {project_dir}: {message[:100]}...')
@@ -448,10 +480,9 @@ async def stream_agent_response(
         logger.warning(f'[Claude stderr] {text}')
         print(f'[Claude stderr] {text}', file=sys.stderr, flush=True)
 
-    # Path-scoped Read/Write/Edit + AskUserQuestion handling.
-    # Use dontAsk (not bypassPermissions) so this callback actually runs —
-    # bypassPermissions skips can_use_tool entirely.
-    _PATH_TOOLS = {'Read', 'Write', 'Edit', 'NotebookEdit'}
+    # Path-scoped file tools are enforced in the PreToolUse hook below: hooks
+    # run before allow rules, whereas allowed_tools entries approve a tool
+    # before can_use_tool is consulted.
     _project_root = project_dir.resolve()
 
     async def can_use_tool(
@@ -467,32 +498,27 @@ async def stream_agent_response(
           updated_input={'questions': questions, 'answers': answers},
         )
 
-      if tool_name in _PATH_TOOLS:
-        raw = input_data.get('file_path') or input_data.get('notebook_path') or ''
-        if raw:
-          try:
-            target = Path(raw).expanduser().resolve()
-          except (OSError, ValueError):
-            return PermissionResultDeny(message=f'Invalid path: {raw!r}')
-          if not target.is_relative_to(_project_root):
-            logger.warning(
-              'Denied %s outside project root %s: %s',
-              tool_name,
-              _project_root,
-              target,
-            )
-            return PermissionResultDeny(
-              message=(
-                f'File access outside the project directory is not allowed. '
-                f'Use a path under {_project_root}.'
-              ),
-            )
+      denial = _path_denial(_project_root, tool_name, input_data)
+      if denial:
+        return PermissionResultDeny(message=denial)
 
       return PermissionResultAllow(updated_input=input_data)
 
-    # Required for can_use_tool in Python: a PreToolUse hook that keeps the
-    # stream open so the permission callback can be invoked.
-    async def _keepalive_hook(_input_data, _tool_use_id, _context):
+    # Enforces the file-tool path allowlist. Also required for can_use_tool
+    # in Python: a PreToolUse hook keeps the stream open so the permission
+    # callback can be invoked.
+    async def _pre_tool_use_hook(input_data, _tool_use_id, _context):
+      denial = _path_denial(
+        _project_root, input_data.get('tool_name', ''), input_data.get('tool_input') or {},
+      )
+      if denial:
+        return {
+          'hookSpecificOutput': {
+            'hookEventName': 'PreToolUse',
+            'permissionDecision': 'deny',
+            'permissionDecisionReason': denial,
+          },
+        }
       return {"continue_": True}
 
     # Always use project settings only. Including "user" inherits the
@@ -506,7 +532,7 @@ async def stream_agent_response(
       allowed_tools=allowed_tools,
       permission_mode='dontAsk',  # Enables can_use_tool path allowlist
       can_use_tool=can_use_tool,
-      hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_keepalive_hook])]},
+      hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_pre_tool_use_hook])]},
       resume=session_id,  # Resume from previous session if provided
       mcp_servers={},  # Skills + Databricks CLI only (no MCP servers)
       system_prompt=system_prompt,  # Databricks-focused system prompt
@@ -695,6 +721,10 @@ async def stream_agent_response(
   finally:
     # Always clear auth context when done
     clear_databricks_auth()
+    # Don't leave credentials on disk between turns; they are re-provisioned
+    # at the start of each turn.
+    for name in (AUTH_FILE_NAME, TOKEN_FILE_NAME):
+      (project_dir / name).unlink(missing_ok=True)
 
 
 # Keep simple aliases for backward compatibility

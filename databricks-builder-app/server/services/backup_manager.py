@@ -262,9 +262,8 @@ def ensure_project_directory(project_id: str) -> Path:
 
   Prefer ``ensure_project_directory_async`` from async request handlers so
   restore completes before the agent resumes a session. This sync helper
-  still runs a full restore when no event loop is running; when called from
-  a running loop it only creates the directory and logs a warning — callers
-  must use the async variant in that case.
+  runs a full restore when no event loop is running and raises when called
+  from a running loop.
   """
   project_dir = resolve_project_dir(project_id)
   is_new_project = not project_dir.exists()
@@ -273,12 +272,12 @@ def ensure_project_directory(project_id: str) -> Path:
     try:
       loop = asyncio.get_event_loop()
       if loop.is_running():
-        logger.warning(
-          'ensure_project_directory called from running event loop for %s; '
-          'use ensure_project_directory_async to await backup restore',
-          project_id,
+        # Creating an empty directory here would skip the restore and the
+        # next backup would overwrite the real one with it.
+        raise RuntimeError(
+          'ensure_project_directory called from a running event loop; '
+          'await ensure_project_directory_async instead'
         )
-        project_dir.mkdir(parents=True, exist_ok=True)
       else:
         restored = loop.run_until_complete(restore_backup(project_id))
         if not restored:

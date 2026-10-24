@@ -105,3 +105,70 @@ def test_system_prompt_is_cli_only_not_mcp():
   assert 'Never invent third-party MCP servers' in prompt
   assert 'warehouse_id' in prompt
   assert 'databricks' in prompt.lower()
+
+
+def _identity_request(email, token):
+  headers = [(b'x-forwarded-email', email.encode()), (b'x-forwarded-user', b'proxy-user')]
+  if token:
+    headers.append((b'x-forwarded-access-token', token.encode()))
+  return Request({'type': 'http', 'headers': headers})
+
+
+def test_forwarded_email_must_match_token_identity(monkeypatch):
+  from server.services import user
+
+  monkeypatch.setenv('ENV', 'production')
+  monkeypatch.delenv('BUILDER_APP_TRUSTED_M2M_CALLERS', raising=False)
+
+  async def fake_resolve(token):
+    return {'alice-token': 'alice@corp.com', 'sp-token': 'sp-app-id'}[token]
+
+  monkeypatch.setattr(user, '_resolve_bearer_user', fake_resolve)
+
+  assert asyncio.run(user.get_current_user(_identity_request('Alice@corp.com', 'alice-token'))) == 'Alice@corp.com'
+  # Spoofed header falls through to the proxy-controlled identity.
+  assert asyncio.run(user.get_current_user(_identity_request('bob@corp.com', 'alice-token'))) == 'proxy-user'
+  assert asyncio.run(user.get_current_user(_identity_request('bob@corp.com', None))) == 'proxy-user'
+
+  monkeypatch.setenv('BUILDER_APP_TRUSTED_M2M_CALLERS', 'other-sp, SP-APP-ID')
+  assert asyncio.run(user.get_current_user(_identity_request('bob@corp.com', 'sp-token'))) == 'bob@corp.com'
+
+
+def test_session_scope_retries_connection_then_yields_once(monkeypatch):
+  from sqlalchemy.exc import OperationalError
+
+  from server.db import database
+
+  monkeypatch.setattr(database, '_SESSION_RETRY_BASE_DELAY', 0)
+  sessions = []
+
+  class FakeSession:
+    def __init__(self, fail):
+      self.fail, self.committed, self.closed = fail, False, False
+
+    async def connection(self):
+      if self.fail:
+        raise OperationalError('SELECT 1', {}, Exception('connection refused'))
+
+    async def commit(self):
+      self.committed = True
+
+    async def rollback(self):
+      pass
+
+    async def close(self):
+      self.closed = True
+
+  async def fake_get_session():
+    sessions.append(FakeSession(fail=len(sessions) == 0))
+    return sessions[-1]
+
+  monkeypatch.setattr(database, 'get_session', fake_get_session)
+
+  async def run():
+    async with database.session_scope() as session:
+      return session
+
+  used = asyncio.run(run())
+  assert used is sessions[1] and used.committed and used.closed
+  assert sessions[0].closed and not sessions[0].committed

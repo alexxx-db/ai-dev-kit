@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..services.active_stream import get_stream_manager
-from ..services.agent import get_project_directory, get_project_directory_async, stream_agent_response
+from ..services.agent import get_project_directory_async, stream_agent_response
 from ..services.backup_manager import mark_for_backup
 from ..services.fmapi_auth import is_deployed_mode
 from ..services.project_access import require_owned_project, require_stream_owner
@@ -587,7 +587,7 @@ async def list_project_files(request: Request, project_id: str):
     await require_owned_project(request, project_id)
 
     # Get project directory and list files
-    project_dir = get_project_directory(project_id)
+    project_dir = await get_project_directory_async(project_id)
 
     files = []
     for path in project_dir.rglob('*'):

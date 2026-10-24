@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from ..services import (
   get_available_skills,
-  get_project_directory,
+  get_project_directory_async,
   get_project_enabled_skills,
   reload_project_skills,
   set_project_enabled_skills,
@@ -26,9 +26,9 @@ class UpdateEnabledSkillsRequest(BaseModel):
   enabled_skills: list[str] | None = None  # None means all skills enabled
 
 
-def _get_skills_dir(project_id: str) -> Path:
+async def _get_skills_dir(project_id: str) -> Path:
   """Get the skills directory for a project."""
-  project_dir = get_project_directory(project_id)
+  project_dir = await get_project_directory_async(project_id)
   return project_dir / '.claude' / 'skills'
 
 
@@ -64,7 +64,7 @@ def _build_tree_node(path: Path, base_path: Path) -> dict:
 async def get_skills_tree(request: Request, project_id: str):
   """Get the skills directory tree for a project."""
   await require_owned_project(request, project_id)
-  skills_dir = _get_skills_dir(project_id)
+  skills_dir = await _get_skills_dir(project_id)
 
   if not skills_dir.exists():
     return {'tree': []}
@@ -88,7 +88,7 @@ async def get_skill_file(
 ):
   """Get the content of a skill file."""
   await require_owned_project(request, project_id)
-  skills_dir = _get_skills_dir(project_id)
+  skills_dir = await _get_skills_dir(project_id)
 
   try:
     requested_path = (skills_dir / path).resolve()
@@ -120,7 +120,7 @@ async def get_skill_file(
 async def get_available_skills_for_project(request: Request, project_id: str):
   """Get all available skills with their enabled/disabled status for a project."""
   await require_owned_project(request, project_id)
-  project_dir = get_project_directory(project_id)
+  project_dir = await get_project_directory_async(project_id)
   enabled_skills = get_project_enabled_skills(project_dir)
 
   # Get all skills (unfiltered) from app cache
@@ -156,7 +156,7 @@ async def update_enabled_skills(
   After updating, syncs the project's .claude/skills directory.
   """
   await require_owned_project(request, project_id)
-  project_dir = get_project_directory(project_id)
+  project_dir = await get_project_directory_async(project_id)
 
   # Write to filesystem
   success = set_project_enabled_skills(project_dir, body.enabled_skills)
@@ -178,7 +178,7 @@ async def reload_skills(request: Request, project_id: str):
   """Reload skills for a project (respects enabled skills)."""
   try:
     await require_owned_project(request, project_id)
-    project_dir = get_project_directory(project_id)
+    project_dir = await get_project_directory_async(project_id)
     enabled_skills = get_project_enabled_skills(project_dir)
 
     success = reload_project_skills(project_dir, enabled_skills=enabled_skills)

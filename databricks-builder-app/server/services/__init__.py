@@ -1,7 +1,7 @@
 """Services module."""
 
 from .active_stream import ActiveStream, ActiveStreamManager, get_stream_manager
-from .agent import get_project_directory, stream_agent_response
+from .agent import get_project_directory, get_project_directory_async, stream_agent_response
 from .backup_manager import (
   mark_for_backup,
   start_backup_worker,
@@ -24,6 +24,7 @@ __all__ = [
   'get_available_skills',
   'get_current_user',
   'get_project_directory',
+  'get_project_directory_async',
   'get_stream_manager',
   'get_system_prompt',
   'get_workspace_url',

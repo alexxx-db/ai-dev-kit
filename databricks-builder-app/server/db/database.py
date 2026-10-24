@@ -491,31 +491,33 @@ async def session_scope() -> AsyncGenerator[AsyncSession, None]:
         async with session_scope() as session:
             result = await session.execute(select(Model))
     """
-    last_exc: Optional[Exception] = None
-
+    # Retry only while establishing the connection. An async context manager
+    # can yield once, so errors raised by the caller's block are not retried.
     for attempt in range(_SESSION_MAX_RETRIES + 1):
         session = await get_session()
         try:
-            yield session
-            await session.commit()
-            return
+            await session.connection()
+            break
         except Exception as exc:
-            await session.rollback()
+            await session.close()
             if attempt < _SESSION_MAX_RETRIES and _is_connection_error(exc):
                 delay = _SESSION_RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
                     f"Database connection error (attempt {attempt + 1}/{_SESSION_MAX_RETRIES + 1}), "
                     f"retrying in {delay:.1f}s: {exc}"
                 )
-                last_exc = exc
                 await asyncio.sleep(delay)
                 continue
             raise
-        finally:
-            await session.close()
 
-    if last_exc:
-        raise last_exc
+    try:
+        yield session
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()
 
 
 async def create_tables():
