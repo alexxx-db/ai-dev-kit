@@ -588,6 +588,14 @@ function Test-McpJsonHasDatabricks {
     return ($cfg.$Top -and $cfg.$Top.PSObject.Properties.Name -contains 'databricks')
 }
 
+# Write UTF-8 without a BOM. Windows PowerShell 5.1's `Set-Content -Encoding UTF8`
+# prepends one, which JSON parsers in Node-based clients can reject.
+function Write-Utf8NoBom {
+    param([string]$Path, [string]$Text)
+    $full = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    [System.IO.File]::WriteAllText($full, $Text + "`n", (New-Object System.Text.UTF8Encoding $false))
+}
+
 function Remove-McpJsonKey {
     param([string]$Path, [string]$Top)
     if (-not (Test-Path $Path)) { return $false }
@@ -604,7 +612,7 @@ function Remove-McpJsonKey {
     Copy-Item $Path "$Path.bak" -Force
     $cfg.$Top.PSObject.Properties.Remove('databricks')
     if (-not $cfg.$Top.PSObject.Properties.Name) { $cfg.PSObject.Properties.Remove($Top) }
-    $cfg | ConvertTo-Json -Depth 100 | Set-Content $Path -Encoding UTF8
+    Write-Utf8NoBom $Path ($cfg | ConvertTo-Json -Depth 100)
     return $true
 }
 
@@ -643,13 +651,33 @@ function Remove-ClaudeHook {
         $cfg.hooks.PSObject.Properties.Remove('SessionStart')
     }
     Copy-Item $Path "$Path.bak" -Force
-    $cfg | ConvertTo-Json -Depth 100 | Set-Content $Path -Encoding UTF8
+    Write-Utf8NoBom $Path ($cfg | ConvertTo-Json -Depth 100)
     return $true
+}
+
+# Remove a planned uninstall path. A skill entry may be a symlink/junction into
+# the shared aitools store; Remove-Item -Recurse on it would delete the target's
+# contents under Windows PowerShell 5.1, so delete only the link itself.
+function Remove-UninstallPath {
+    param([string]$Path)
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    if (-not $item) { return }
+    if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+        $item.Delete()
+    } else {
+        Remove-Item -LiteralPath $Path -Recurse -Force
+    }
 }
 
 function Invoke-Uninstall {
     $home_ = $env:USERPROFILE
     if ($script:Scope -eq "global") { $baseDir = $home_ } else { $baseDir = (Get-Location).Path }
+    # From the home directory every project-scope location IS a global one, so a
+    # project uninstall here would remove the global install.
+    if ($script:Scope -eq "project" -and
+        ([System.IO.Path]::GetFullPath($baseDir).TrimEnd('\') -ieq [System.IO.Path]::GetFullPath($home_).TrimEnd('\'))) {
+        Write-Err "Project-scope uninstall from your home directory would remove the global install. Run it from the project directory, or pass --global."
+    }
     $installDir = if ($env:AIDEVKIT_HOME) { $env:AIDEVKIT_HOME }
                   else { Join-Path $home_ ".ai-dev-kit" }
     if ($script:Scope -eq "global") { $stateDir = $installDir } else { $stateDir = Join-Path $baseDir ".ai-dev-kit" }
@@ -776,14 +804,14 @@ function Invoke-Uninstall {
     }
 
     Write-Step "Removing"
-    foreach ($p in $planSkills)  { Remove-Item -Recurse -Force $p; Write-Msg "removed $p" }
+    foreach ($p in $planSkills)  { Remove-UninstallPath $p; Write-Msg "removed $p" }
     foreach ($t in $planMcp) {
         if ($t.Kind -eq "json") { if (Remove-McpJsonKey -Path $t.Path -Top $t.Top) { Write-Msg "cleaned $($t.Path)" } }
         else { if (Remove-McpTomlBlock -Path $t.Path) { Write-Msg "cleaned $($t.Path)" } }
     }
     foreach ($p in $planHooks)   { if (Remove-ClaudeHook -Path $p) { Write-Msg "cleaned hook in $p" } }
-    foreach ($p in $planRuntime) { Remove-Item -Recurse -Force $p; Write-Msg "removed $p" }
-    foreach ($p in $planState)   { Remove-Item -Recurse -Force $p; Write-Msg "removed $p" }
+    foreach ($p in $planRuntime) { Remove-UninstallPath $p; Write-Msg "removed $p" }
+    foreach ($p in $planState)   { Remove-UninstallPath $p; Write-Msg "removed $p" }
     if ($planPlugin) { Remove-ClaudePlugin -OthersRemoved ($total - $pluginKeys.Count) -Keys $pluginKeys }
 
     Write-Host ""

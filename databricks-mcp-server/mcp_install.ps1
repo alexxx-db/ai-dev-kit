@@ -539,6 +539,14 @@ function Invoke-PromptScope {
     $script:Scope = Select-Radio -Items $items
 }
 
+# Write UTF-8 without a BOM. Windows PowerShell 5.1's `Set-Content -Encoding UTF8`
+# prepends one, which JSON parsers in Node-based clients can reject.
+function Write-Utf8NoBom {
+    param([string]$Path, [string]$Text)
+    $full = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    [System.IO.File]::WriteAllText($full, $Text + "`n", (New-Object System.Text.UTF8Encoding $false))
+}
+
 # ─── MCP config writers ────────────────────────────────────────
 # Write/merge an MCP server entry into a JSON config.
 #   -Path     target config file
@@ -571,7 +579,14 @@ function Write-McpJsonConfig {
 
     $existing = $null
     if (Test-Path $Path) {
-        try { $existing = Get-Content $Path -Raw | ConvertFrom-Json } catch { $existing = $null }
+        $raw = Get-Content $Path -Raw
+        if ($raw -and $raw.Trim()) {
+            # Never replace a config we can't parse (e.g. JSONC comments).
+            try { $existing = $raw | ConvertFrom-Json -ErrorAction Stop } catch {
+                Write-Warn "Could not merge into $Path (comments or invalid JSON?). Left it unchanged -- add the databricks MCP server manually."
+                return
+            }
+        }
     }
 
     # Use forward slashes for cross-platform JSON compatibility
@@ -586,7 +601,7 @@ function Write-McpJsonConfig {
         if ($Defer) { $dbProps.defer_loading = $true }
         $dbProps.env = [PSCustomObject]@{ DATABRICKS_CONFIG_PROFILE = $script:Profile_ }
         $existing.$RootKey | Add-Member -NotePropertyName "databricks" -NotePropertyValue ([PSCustomObject]$dbProps) -Force
-        $existing | ConvertTo-Json -Depth 10 | Set-Content $Path -Encoding UTF8
+        Write-Utf8NoBom $Path ($existing | ConvertTo-Json -Depth 100)
     } else {
         $deferLine = if ($Defer) { "`n      `"defer_loading`": true," } else { "" }
         $json = @"
@@ -600,7 +615,7 @@ function Write-McpJsonConfig {
   }
 }
 "@
-        Set-Content -Path $Path -Value $json -Encoding UTF8
+        Write-Utf8NoBom $Path $json
     }
 }
 
@@ -660,7 +675,14 @@ function Write-OpenCodeJson {
 
     $existing = $null
     if (Test-Path $Path) {
-        try { $existing = Get-Content $Path -Raw | ConvertFrom-Json } catch { $existing = $null }
+        $raw = Get-Content $Path -Raw
+        if ($raw -and $raw.Trim()) {
+            # Never replace a config we can't parse (e.g. JSONC comments).
+            try { $existing = $raw | ConvertFrom-Json -ErrorAction Stop } catch {
+                Write-Warn "Could not merge into $Path (comments or invalid JSON?). Left it unchanged -- add the databricks MCP server manually."
+                return
+            }
+        }
     }
 
     if ($existing) {
@@ -677,7 +699,7 @@ function Write-OpenCodeJson {
             enabled     = $true
         }
         $existing.mcp | Add-Member -NotePropertyName "databricks" -NotePropertyValue $dbEntry -Force
-        $existing | ConvertTo-Json -Depth 10 | Set-Content $Path -Encoding UTF8
+        Write-Utf8NoBom $Path ($existing | ConvertTo-Json -Depth 100)
     } else {
         $pythonPath = $script:VenvPython -replace '\\', '/'
         $entryPath  = $script:McpEntry -replace '\\', '/'
@@ -694,7 +716,7 @@ function Write-OpenCodeJson {
   }
 }
 "@
-        Set-Content -Path $Path -Value $json -Encoding UTF8
+        Write-Utf8NoBom $Path $json
     }
 }
 
@@ -827,7 +849,7 @@ function Remove-McpJsonKey {
     Copy-Item $Path "$Path.bak" -Force
     $cfg.$Top.PSObject.Properties.Remove('databricks')
     if (-not $cfg.$Top.PSObject.Properties.Name) { $cfg.PSObject.Properties.Remove($Top) }
-    $cfg | ConvertTo-Json -Depth 100 | Set-Content $Path -Encoding UTF8
+    Write-Utf8NoBom $Path ($cfg | ConvertTo-Json -Depth 100)
     return $true
 }
 
