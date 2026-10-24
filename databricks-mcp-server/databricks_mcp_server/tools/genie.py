@@ -150,7 +150,9 @@ def manage_genie(
         )
 
     else:
-        return {"error": f"Invalid action '{action}'. Valid actions: create_or_update, get, list, delete, export, import"}
+        return {
+            "error": f"Invalid action '{action}'. Valid actions: create_or_update, get, list, delete, export, import"
+        }
 
 
 # ============================================================================
@@ -167,7 +169,8 @@ def ask_genie(
 ) -> Dict[str, Any]:
     """Ask natural language question to Genie Space. Pass conversation_id for follow-ups.
 
-    Returns: {question, conversation_id, message_id, status, sql, description, columns, data, row_count, text_response, error}."""
+    Returns: {question, conversation_id, message_id, status, sql, description, columns, data, row_count,
+    text_response, error}."""
     try:
         w = get_workspace_client()
 
@@ -370,6 +373,7 @@ def _get_genie_space(space_id: str, include_serialized_space: bool) -> Dict[str,
         if space.serialized_space:
             try:
                 import json
+
                 serialized = json.loads(space.serialized_space)
                 for table in serialized.get("tables", []):
                     if table.get("table_identifier"):

@@ -318,9 +318,9 @@ class TestDeleteFromVolume:
         mock_client = mock.Mock()
         mock_client.files.get_metadata.side_effect = Exception("Not a file")
         # list succeeds with content
-        mock_client.files.list_directory_contents.return_value = iter([
-            mock.Mock(name="file.csv", path="/Volumes/.../file.csv", is_directory=False)
-        ])
+        mock_client.files.list_directory_contents.return_value = iter(
+            [mock.Mock(name="file.csv", path="/Volumes/.../file.csv", is_directory=False)]
+        )
         # delete_directory fails because not empty
         mock_client.files.delete_directory.side_effect = Exception("Directory not empty")
         mock_get_client.return_value = mock_client
@@ -343,18 +343,24 @@ class TestDeleteFromVolume:
         # 3. _collect_volume_contents for subdir
         mock_client.files.list_directory_contents.side_effect = [
             # Initial check (called with trailing /)
-            iter([
-                mock.Mock(name="file1.csv", path="/Volumes/c/s/v/dir/file1.csv", is_directory=False),
-            ]),
+            iter(
+                [
+                    mock.Mock(name="file1.csv", path="/Volumes/c/s/v/dir/file1.csv", is_directory=False),
+                ]
+            ),
             # _collect_volume_contents: root dir
-            iter([
-                mock.Mock(name="file1.csv", path="/Volumes/c/s/v/dir/file1.csv", is_directory=False),
-                mock.Mock(name="subdir", path="/Volumes/c/s/v/dir/subdir", is_directory=True),
-            ]),
+            iter(
+                [
+                    mock.Mock(name="file1.csv", path="/Volumes/c/s/v/dir/file1.csv", is_directory=False),
+                    mock.Mock(name="subdir", path="/Volumes/c/s/v/dir/subdir", is_directory=True),
+                ]
+            ),
             # _collect_volume_contents: subdir
-            iter([
-                mock.Mock(name="file2.csv", path="/Volumes/c/s/v/dir/subdir/file2.csv", is_directory=False),
-            ]),
+            iter(
+                [
+                    mock.Mock(name="file2.csv", path="/Volumes/c/s/v/dir/subdir/file2.csv", is_directory=False),
+                ]
+            ),
         ]
         mock_get_client.return_value = mock_client
 

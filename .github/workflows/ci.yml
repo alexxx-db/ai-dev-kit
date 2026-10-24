@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  skills-unit-tests:
-    name: databricks-skills unit tests
+  unit-tests:
+    name: Unit tests
     runs-on: linux-ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -18,17 +18,20 @@ jobs:
         with:
           version: "0.11.4"
 
-      - name: Run databricks-skills unit tests
+      - name: databricks-tools-core
+        working-directory: databricks-tools-core
+        run: uvx --python 3.11 --with-editable . --with pytest --with pytest-asyncio pytest tests/unit -q
+
+      - name: databricks-mcp-server
+        working-directory: databricks-mcp-server
         run: |
-          if [ -d databricks-skills/.tests ]; then
-            uvx --python 3.11 \
-              --with pytest \
-              --with databricks-sdk \
-              --with requests \
-              pytest databricks-skills/.tests/ -m "not integration" -v
-          else
-            echo "databricks-skills/.tests/ not present on this branch; skipping."
-          fi
+          uvx --python 3.11 --with-editable ../databricks-tools-core --with-editable . \
+            --with pytest --with pytest-asyncio \
+            pytest tests -q -m "not integration" --ignore=tests/integration
+
+      - name: databricks-builder-app
+        working-directory: databricks-builder-app
+        run: uv run --python 3.11 --with pytest --with pytest-asyncio pytest tests -q
 
   lint:
     name: Lint & Format

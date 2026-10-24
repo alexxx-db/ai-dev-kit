@@ -67,7 +67,8 @@ def execute_code(
     - serverless: No cluster needed, ~30s cold start, best for batch/one-off tasks
     - cluster: State persists via context_id, best for interactive work (but slow ~2min one-off cluster startup)
 
-    - Cluster mode returns context_id. REUSE IT for subsequent calls to skip context creation (Variables/imports persist across calls).
+    - Cluster mode returns context_id. REUSE IT for subsequent calls to skip context creation
+      (Variables/imports persist across calls).
     - Serverless has no context reuse (~30s cold start each time).
 
     file_path: Run local file (.py/.scala/.sql/.r), auto-detects language.

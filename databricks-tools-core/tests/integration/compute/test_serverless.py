@@ -67,8 +67,7 @@ class TestServerlessPythonExecution:
         code = 'dbutils.notebook.exit("hello from serverless")'
         result = run_code_on_serverless(code=code, language="python")
 
-        logger.info(f"Result: success={result.success}, output={result.output}, "
-                     f"duration={result.duration_seconds}s")
+        logger.info(f"Result: success={result.success}, output={result.output}, duration={result.duration_seconds}s")
 
         assert result.success, f"Execution failed: {result.error}"
         assert "hello from serverless" in result.output
@@ -198,8 +197,7 @@ class TestServerlessPersistentMode:
             workspace_path=ws_path,
         )
 
-        logger.info(f"Persistent result: success={result.success}, "
-                     f"workspace_path={result.workspace_path}")
+        logger.info(f"Persistent result: success={result.success}, workspace_path={result.workspace_path}")
 
         assert result.success, f"Execution failed: {result.error}"
         assert result.workspace_path == ws_path

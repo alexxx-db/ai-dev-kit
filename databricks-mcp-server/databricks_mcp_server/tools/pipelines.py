@@ -97,6 +97,7 @@ def manage_pipeline(
         try:
             if result.pipeline_id:
                 from ..manifest import track_resource
+
                 track_resource(resource_type="pipeline", name=name, resource_id=result.pipeline_id)
         except Exception:
             pass
@@ -131,6 +132,7 @@ def manage_pipeline(
             pid = result_dict.get("pipeline_id")
             if pid:
                 from ..manifest import track_resource
+
                 track_resource(resource_type="pipeline", name=name, resource_id=pid)
         except Exception:
             pass
@@ -163,6 +165,7 @@ def manage_pipeline(
         _delete_pipeline(pipeline_id=pipeline_id)
         try:
             from ..manifest import remove_resource
+
             remove_resource(resource_type="pipeline", resource_id=pipeline_id)
         except Exception:
             pass
@@ -176,7 +179,9 @@ def manage_pipeline(
 
     else:
         return {
-            "error": f"Invalid action '{action}'. Valid actions: create, create_or_update, get, update, delete, find_by_name"
+            "error": (
+                f"Invalid action '{action}'. Valid actions: create, create_or_update, get, update, delete, find_by_name"
+            )
         }
 
 

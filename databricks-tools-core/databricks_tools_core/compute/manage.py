@@ -60,11 +60,11 @@ def _get_default_node_type(w) -> str:
 
     # Common sensible defaults by cloud
     preferred = [
-        "i3.xlarge",          # AWS
-        "Standard_DS3_v2",    # Azure
-        "n1-highmem-4",       # GCP
-        "Standard_D4ds_v5",   # Azure newer
-        "m5d.xlarge",         # AWS newer
+        "i3.xlarge",  # AWS
+        "Standard_DS3_v2",  # Azure
+        "n1-highmem-4",  # GCP
+        "Standard_D4ds_v5",  # Azure newer
+        "m5d.xlarge",  # AWS newer
     ]
 
     available_ids = {nt.node_type_id for nt in node_types.node_types}
@@ -147,6 +147,7 @@ def create_cluster(
 
     if dsm == DataSecurityMode.SINGLE_USER and single_user_name is None:
         from ..auth import get_current_username
+
         single_user_name = get_current_username()
 
     # Build create kwargs
@@ -326,7 +327,9 @@ def terminate_cluster(cluster_id: str) -> Dict[str, Any]:
         "cluster_name": cluster_name,
         "previous_state": current_state,
         "state": "TERMINATING",
-        "message": f"Cluster '{cluster_name}' is being terminated. This is reversible — use start_cluster() to restart.",
+        "message": (
+            f"Cluster '{cluster_name}' is being terminated. This is reversible — use start_cluster() to restart."
+        ),
     }
 
 
@@ -373,14 +376,16 @@ def list_node_types() -> List[Dict[str, Any]]:
 
     node_types = []
     for nt in result.node_types:
-        node_types.append({
-            "node_type_id": nt.node_type_id,
-            "memory_mb": nt.memory_mb,
-            "num_cores": getattr(nt, "num_cores", None),
-            "num_gpus": getattr(nt, "num_gpus", None) or 0,
-            "description": getattr(nt, "description", None) or nt.node_type_id,
-            "is_deprecated": getattr(nt, "is_deprecated", False),
-        })
+        node_types.append(
+            {
+                "node_type_id": nt.node_type_id,
+                "memory_mb": nt.memory_mb,
+                "num_cores": getattr(nt, "num_cores", None),
+                "num_gpus": getattr(nt, "num_gpus", None) or 0,
+                "description": getattr(nt, "description", None) or nt.node_type_id,
+                "is_deprecated": getattr(nt, "is_deprecated", False),
+            }
+        )
     return node_types
 
 
@@ -398,10 +403,12 @@ def list_spark_versions() -> List[Dict[str, Any]]:
 
     versions = []
     for v in result.versions:
-        versions.append({
-            "key": v.key,
-            "name": v.name,
-        })
+        versions.append(
+            {
+                "key": v.key,
+                "name": v.name,
+            }
+        )
     return versions
 
 
@@ -553,8 +560,5 @@ def delete_sql_warehouse(warehouse_id: str) -> Dict[str, Any]:
         "warehouse_id": warehouse_id,
         "name": wh_name,
         "state": "DELETED",
-        "message": (
-            f"WARNING: SQL warehouse '{wh_name}' has been PERMANENTLY deleted. "
-            f"This action cannot be undone."
-        ),
+        "message": (f"WARNING: SQL warehouse '{wh_name}' has been PERMANENTLY deleted. This action cannot be undone."),
     }

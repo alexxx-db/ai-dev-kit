@@ -36,10 +36,7 @@ class TestManageKA:
 
     def test_find_by_name_nonexistent(self):
         """Should return not found for nonexistent KA."""
-        result = manage_ka(
-            action="find_by_name",
-            name="nonexistent_ka_xyz_12345"
-        )
+        result = manage_ka(action="find_by_name", name="nonexistent_ka_xyz_12345")
 
         logger.info(f"Find nonexistent KA result: {result}")
 
@@ -63,10 +60,7 @@ class TestManageKA:
 
     def test_get_nonexistent_ka(self):
         """Should handle nonexistent KA gracefully."""
-        result = manage_ka(
-            action="get",
-            tile_id="nonexistent_tile_id_xyz_12345"
-        )
+        result = manage_ka(action="get", tile_id="nonexistent_tile_id_xyz_12345")
 
         logger.info(f"Get nonexistent KA result: {result}")
 
@@ -99,10 +93,7 @@ class TestManageMAS:
 
     def test_find_by_name_nonexistent(self):
         """Should return not found for nonexistent MAS."""
-        result = manage_mas(
-            action="find_by_name",
-            name="nonexistent_mas_xyz_12345"
-        )
+        result = manage_mas(action="find_by_name", name="nonexistent_mas_xyz_12345")
 
         logger.info(f"Find nonexistent MAS result: {result}")
 
@@ -126,10 +117,7 @@ class TestManageMAS:
 
     def test_get_nonexistent_mas(self):
         """Should handle nonexistent MAS gracefully."""
-        result = manage_mas(
-            action="get",
-            tile_id="nonexistent_tile_id_xyz_12345"
-        )
+        result = manage_mas(action="get", tile_id="nonexistent_tile_id_xyz_12345")
 
         logger.info(f"Get nonexistent MAS result: {result}")
 
@@ -156,7 +144,7 @@ class TestManageMAS:
             name="test_mas",
             agents=[
                 {"name": "agent1"}  # Missing description and agent type
-            ]
+            ],
         )
 
         assert "error" in result
@@ -173,7 +161,7 @@ class TestManageMAS:
                     "description": "Test agent",
                     # Missing agent type (endpoint_name, genie_space_id, etc.)
                 }
-            ]
+            ],
         )
 
         assert "error" in result
@@ -191,7 +179,7 @@ class TestManageMAS:
                     "endpoint_name": "some-endpoint",
                     "genie_space_id": "some-space-id",  # Multiple types!
                 }
-            ]
+            ],
         )
 
         assert "error" in result

@@ -6,12 +6,14 @@ Tests the MCP tool wrapper routing logic without hitting Databricks APIs.
 
 import pytest
 from unittest.mock import patch, MagicMock
-from databricks_mcp_server.tools.compute import (
-    execute_code,
-    manage_cluster,
-    manage_sql_warehouse,
-    list_compute,
-)
+from databricks_mcp_server.tools import compute
+
+# @mcp.tool wraps sync tools in an async asyncio.to_thread shim (see server.py);
+# test the sync bodies it wraps.
+execute_code = compute.execute_code.__wrapped__
+manage_cluster = compute.manage_cluster.__wrapped__
+manage_sql_warehouse = compute.manage_sql_warehouse.__wrapped__
+list_compute = compute.list_compute.__wrapped__
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +161,7 @@ class TestExecuteCodeRouting:
     @patch("databricks_mcp_server.tools.compute._execute_databricks_command")
     def test_no_running_cluster_error(self, mock_cluster):
         from databricks_tools_core.compute import NoRunningClusterError
+
         mock_cluster.side_effect = NoRunningClusterError(
             available_clusters=[],
             skipped_clusters=[],
@@ -214,7 +217,7 @@ class TestManageCluster:
     def test_create_routes_correctly(self, mock_create):
         mock_create.return_value = {"cluster_id": "abc", "state": "PENDING"}
 
-        result = manage_cluster(action="create", name="test-cluster", num_workers=2)
+        manage_cluster(action="create", name="test-cluster", num_workers=2)
 
         mock_create.assert_called_once()
         assert mock_create.call_args[1]["name"] == "test-cluster"

@@ -24,20 +24,22 @@ from ..auth import get_workspace_client
 # Directories that should never be uploaded to a Databricks workspace.
 # These are build artifacts, dependency caches, and virtual environments
 # that bloat uploads and slow down deployments.
-EXCLUDED_DIRS = frozenset({
-    "node_modules",
-    "__pycache__",
-    ".venv",
-    "venv",
-    ".tox",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".ruff_cache",
-    "dist",
-    "build",
-    ".eggs",
-    "*.egg-info",
-})
+EXCLUDED_DIRS = frozenset(
+    {
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".tox",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        "dist",
+        "build",
+        ".eggs",
+        "*.egg-info",
+    }
+)
 
 
 @dataclass
@@ -205,8 +207,7 @@ def _collect_files(local_folder: str) -> List[tuple]:
     for dirpath, dirnames, filenames in os.walk(local_folder):
         # Prune excluded directories so os.walk doesn't descend into them
         dirnames[:] = [
-            d for d in dirnames
-            if not d.startswith(".") and d not in EXCLUDED_DIRS and not d.endswith(".egg-info")
+            d for d in dirnames if not d.startswith(".") and d not in EXCLUDED_DIRS and not d.endswith(".egg-info")
         ]
 
         for filename in filenames:
@@ -236,8 +237,7 @@ def _collect_directories(local_folder: str) -> List[str]:
     for dirpath, dirnames, _ in os.walk(local_folder):
         # Skip hidden directories and common non-deployable directories
         dirnames[:] = [
-            d for d in dirnames
-            if not d.startswith(".") and d not in EXCLUDED_DIRS and not d.endswith(".egg-info")
+            d for d in dirnames if not d.startswith(".") and d not in EXCLUDED_DIRS and not d.endswith(".egg-info")
         ]
 
         for dirname in dirnames:

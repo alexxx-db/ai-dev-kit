@@ -205,8 +205,9 @@ class TestManageVolumeFiles:
             assert downloaded_file.exists(), f"Downloaded file not found at {downloaded_file}"
 
             downloaded_content = downloaded_file.read_text()
-            assert downloaded_content == original_content, \
+            assert downloaded_content == original_content, (
                 f"Content mismatch: expected {original_content!r}, got {downloaded_content!r}"
+            )
 
     def test_delete_file(
         self,

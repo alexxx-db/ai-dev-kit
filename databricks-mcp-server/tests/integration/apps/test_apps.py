@@ -105,8 +105,9 @@ class TestAppLifecycle:
                 overwrite=True,
             )
 
-            assert upload_result.get("success", False) or upload_result.get("status") == "success", \
+            assert upload_result.get("success", False) or upload_result.get("status") == "success", (
                 f"Failed to upload app resources: {upload_result}"
+            )
             log_time(f"Upload result: {upload_result}")
 
             # ==================== APP LIFECYCLE ====================
@@ -196,11 +197,9 @@ class TestAppLifecycle:
 
             # Should return error, indicate not found, or be in DELETING state
             status_str = str(get_after).lower()
-            assert (
-                "error" in get_after
-                or "not found" in status_str
-                or "deleting" in status_str
-            ), f"App should be deleted or deleting: {get_after}"
+            assert "error" in get_after or "not found" in status_str or "deleting" in status_str, (
+                f"App should be deleted or deleting: {get_after}"
+            )
 
             log_time("Full app lifecycle test PASSED!")
 

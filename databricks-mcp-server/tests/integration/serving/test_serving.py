@@ -79,9 +79,7 @@ class TestManageServingEndpoint:
         result = manage_serving_endpoint(
             action="query",
             name="databricks-meta-llama-3-3-70b-instruct",
-            messages=[
-                {"role": "user", "content": "Say hello in one word."}
-            ],
+            messages=[{"role": "user", "content": "Say hello in one word."}],
             max_tokens=10,
         )
 

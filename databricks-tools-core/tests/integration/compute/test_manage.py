@@ -94,7 +94,7 @@ class TestListNodeTypes:
         """Should return a non-empty list of node types."""
         node_types = list_node_types()
 
-        print(f"\n=== List Node Types ===")
+        print("\n=== List Node Types ===")
         print(f"Found {len(node_types)} node types")
         for nt in node_types[:5]:
             print(f"  - {nt['node_type_id']} ({nt['memory_mb']}MB, {nt['num_cores']} cores)")
@@ -123,7 +123,7 @@ class TestListSparkVersions:
         """Should return a non-empty list of spark versions."""
         versions = list_spark_versions()
 
-        print(f"\n=== List Spark Versions ===")
+        print("\n=== List Spark Versions ===")
         print(f"Found {len(versions)} versions")
         for v in versions[:5]:
             print(f"  - {v['key']}: {v['name']}")
@@ -151,7 +151,7 @@ class TestCreateCluster:
         """
         status = get_cluster_status(managed_cluster)
 
-        print(f"\n=== Created Cluster Status ===")
+        print("\n=== Created Cluster Status ===")
         print(f"Cluster ID: {status['cluster_id']}")
         print(f"Name: {status['cluster_name']}")
         print(f"State: {status['state']}")
@@ -168,7 +168,7 @@ class TestTerminateCluster:
         """Should terminate the cluster (reversible)."""
         result = terminate_cluster(managed_cluster)
 
-        print(f"\n=== Terminate Cluster ===")
+        print("\n=== Terminate Cluster ===")
         print(f"Result: {result}")
 
         assert result["cluster_id"] == managed_cluster
@@ -186,7 +186,6 @@ class TestModifyCluster:
 
     def _wait_for_terminated(self, cluster_id, timeout=120):
         """Wait until cluster reaches TERMINATED state."""
-        import time
         start = time.time()
         while time.time() - start < timeout:
             status = get_cluster_status(cluster_id)
@@ -204,7 +203,7 @@ class TestModifyCluster:
             name="ai-dev-kit-test-manage-renamed",
         )
 
-        print(f"\n=== Modify Cluster ===")
+        print("\n=== Modify Cluster ===")
         print(f"Result: {result}")
 
         assert result["cluster_id"] == managed_cluster
@@ -227,7 +226,7 @@ class TestCreateSqlWarehouse:
         w = get_workspace_client()
         wh = w.warehouses.get(managed_warehouse)
 
-        print(f"\n=== Created Warehouse ===")
+        print("\n=== Created Warehouse ===")
         print(f"Warehouse ID: {wh.id}")
         print(f"Name: {wh.name}")
         print(f"State: {wh.state}")
@@ -247,7 +246,7 @@ class TestModifySqlWarehouse:
             name="ai-dev-kit-test-manage-renamed",
         )
 
-        print(f"\n=== Modify Warehouse ===")
+        print("\n=== Modify Warehouse ===")
         print(f"Result: {result}")
 
         assert result["warehouse_id"] == managed_warehouse
@@ -278,7 +277,7 @@ class TestDeleteCluster:
         try:
             delete_result = delete_cluster(cluster_id)
 
-            print(f"\n=== Delete Cluster ===")
+            print("\n=== Delete Cluster ===")
             print(f"Result: {delete_result}")
 
             assert delete_result["cluster_id"] == cluster_id
@@ -311,7 +310,7 @@ class TestDeleteSqlWarehouse:
         try:
             delete_result = delete_sql_warehouse(warehouse_id)
 
-            print(f"\n=== Delete Warehouse ===")
+            print("\n=== Delete Warehouse ===")
             print(f"Result: {delete_result}")
 
             assert delete_result["warehouse_id"] == warehouse_id
