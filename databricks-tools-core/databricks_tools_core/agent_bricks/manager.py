@@ -353,7 +353,9 @@ class AgentBricksManager:
             "description": created_ka.description,
             "instructions": created_ka.instructions,
             "state": created_ka.state.value if created_ka.state else None,
-            "sources": [{"id": s.id, "name": s.display_name, "path": s.files.path if s.files else None} for s in created_sources],
+            "sources": [
+                {"id": s.id, "name": s.display_name, "path": s.files.path if s.files else None} for s in created_sources
+            ],
         }
 
     def ka_get(self, tile_id: str) -> Optional[Dict[str, Any]]:
@@ -477,8 +479,7 @@ class AgentBricksManager:
         # For now, we skip source updates on existing KAs
         if knowledge_sources is not None:
             logger.debug(
-                "Knowledge source updates on existing KAs not yet implemented via SDK. "
-                "Sources will remain unchanged."
+                "Knowledge source updates on existing KAs not yet implemented via SDK. Sources will remain unchanged."
             )
 
         return self.ka_get(tile_id)
@@ -1317,9 +1318,7 @@ class AgentBricksManager:
             self._handle_response_error(response, "POST", path)
         return response.json()
 
-    def _patch(
-        self, path: str, body: Dict[str, Any], params: Optional[Dict[str, str]] = None
-    ) -> Dict[str, Any]:
+    def _patch(self, path: str, body: Dict[str, Any], params: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         headers = self.w.config.authenticate()
         headers["Content-Type"] = "application/json"
         url = f"{self.w.config.host}{path}"

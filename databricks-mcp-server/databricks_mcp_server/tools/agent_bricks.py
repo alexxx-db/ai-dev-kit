@@ -526,11 +526,13 @@ def manage_mas(
     """Manage Supervisor Agent (MAS) - orchestrates multiple agents for query routing.
 
     Actions: create_or_update (name+agents), get (tile_id), find_by_name (name), delete (tile_id).
-    agents: [{name, description (critical for routing), ONE OF: endpoint_name|genie_space_id|ka_tile_id|uc_function_name|connection_name}].
+    agents: [{name, description (critical for routing),
+    ONE OF: endpoint_name|genie_space_id|ka_tile_id|uc_function_name|connection_name}].
     description: What this MAS does. instructions: Routing rules for the supervisor.
     examples: [{question, guideline}] to train routing behavior.
     See agent-bricks skill for full agent configuration details.
-    Returns: create_or_update={tile_id, operation, endpoint_status, agents_count}, get={tile_id, agents, examples_count},
+    Returns: create_or_update={tile_id, operation, endpoint_status, agents_count},
+    get={tile_id, agents, examples_count},
     find_by_name={found, tile_id, agents_count}, delete={success}."""
     action = action.lower()
 

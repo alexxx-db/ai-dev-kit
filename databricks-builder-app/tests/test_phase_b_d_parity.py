@@ -78,12 +78,12 @@ def test_relocate_session_transcripts_folds_stale_dirs(tmp_path):
 
 
 def test_path_allowlist_denies_outside_project(tmp_path):
-  """Unit-test the path check logic used by can_use_tool."""
-  project_root = tmp_path.resolve()
-  inside = project_root / 'src' / 'a.py'
-  inside.parent.mkdir(parents=True)
-  inside.write_text('x')
-  outside = Path('/tmp/evil.py').resolve()
+  from server.services.agent import _path_denial
 
-  assert inside.is_relative_to(project_root)
-  assert not outside.is_relative_to(project_root)
+  root = tmp_path.resolve()
+  assert _path_denial(root, 'Read', {'file_path': str(root / 'src' / 'a.py')}) is None
+  assert _path_denial(root, 'Write', {'file_path': 'relative/ok.txt'}) is None
+  assert _path_denial(root, 'Read', {'file_path': '../other-project/.databrickscfg'})
+  assert _path_denial(root, 'Glob', {'path': '/etc'})
+  assert _path_denial(root, 'Grep', {'path': str(root.parent)})
+  assert _path_denial(root, 'Bash', {'command': 'ls /'}) is None

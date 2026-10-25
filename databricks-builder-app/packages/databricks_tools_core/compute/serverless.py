@@ -105,9 +105,7 @@ def _is_ipynb(content: str) -> bool:
         return False
 
 
-def _upload_temp_notebook(
-    code: str, language: str, workspace_path: str, is_jupyter: bool = False
-) -> None:
+def _upload_temp_notebook(code: str, language: str, workspace_path: str, is_jupyter: bool = False) -> None:
     """Upload code as a temporary notebook to the Databricks workspace.
 
     Args:

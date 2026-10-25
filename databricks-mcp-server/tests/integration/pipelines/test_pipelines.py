@@ -57,8 +57,9 @@ class TestPipelineLifecycle:
                 overwrite=True,
             )
             log_time(f"Upload result: {upload_result}")
-            assert upload_result.get("success", False) or upload_result.get("status") == "success", \
+            assert upload_result.get("success", False) or upload_result.get("status") == "success", (
                 f"Failed to upload pipeline files: {upload_result}"
+            )
 
             # Step 2: Create pipeline with create_or_update
             log_time(f"Step 2: Creating pipeline '{pipeline_name}'...")
@@ -125,8 +126,9 @@ class TestPipelineLifecycle:
 
             # Verify the run completed successfully
             state = start_result.get("state") or start_result.get("status")
-            assert state in ("COMPLETED", "IDLE", "SUCCESS", None) or "error" not in str(start_result).lower(), \
+            assert state in ("COMPLETED", "IDLE", "SUCCESS", None) or "error" not in str(start_result).lower(), (
                 f"Pipeline run should complete successfully, got state: {state}, result: {start_result}"
+            )
 
             # Step 6: Get events
             log_time("Step 6: Getting pipeline events...")

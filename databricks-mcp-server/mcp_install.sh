@@ -526,22 +526,14 @@ write_mcp_json_config() {
         msg "${D}Backed up ${path##*/} → ${path##*/}.bak${N}"
     fi
 
-    local defer_py="" defer_json=""
+    local defer_json=""
     if [ "$defer" = "true" ]; then
-        defer_py="'defer_loading': True, "
         defer_json='
       "defer_loading": true,'
     fi
 
     if [ -f "$VENV_PYTHON" ]; then
-        "$VENV_PYTHON" -c "
-import json
-try:
-    with open('$path') as f: cfg = json.load(f)
-except: cfg = {}
-cfg.setdefault('$root_key', {})['databricks'] = {'command': '$VENV_PYTHON', 'args': ['$MCP_ENTRY'], ${defer_py}'env': {'DATABRICKS_CONFIG_PROFILE': '$PROFILE'}}
-with open('$path', 'w') as f: json.dump(cfg, f, indent=2); f.write('\n')
-" 2>/dev/null && return
+        merge_mcp_json "$path" "$root_key" standard "$defer"; return
     fi
 
     # Fallback: only safe for new files — refuse to overwrite existing files
@@ -562,6 +554,44 @@ with open('$path', 'w') as f: json.dump(cfg, f, indent=2); f.write('\n')
   }
 }
 EOF
+}
+
+# Merge the databricks server entry into a JSON config with the venv python.
+#   $1 path  $2 root_key  $3 style ("standard" or "opencode")  $4 defer ("true"/"false")
+# Values are passed as argv, never spliced into Python source. Returns 0 when
+# merged, and non-zero without touching the file when it can't be parsed (e.g.
+# JSONC comments) -- warning the user instead of replacing their config.
+merge_mcp_json() {
+    "$VENV_PYTHON" - "$1" "$2" "$3" "$4" "$VENV_PYTHON" "$MCP_ENTRY" "$PROFILE" <<'PY' && return 0
+import json, os, sys
+path, root_key, style, defer, python, entry, profile = sys.argv[1:8]
+cfg = {}
+if os.path.exists(path):
+    with open(path) as f:
+        text = f.read()
+    if text.strip():
+        try:
+            cfg = json.loads(text)
+        except ValueError:
+            sys.exit(3)
+        if not isinstance(cfg, dict):
+            sys.exit(3)
+if style == "opencode":
+    cfg.setdefault("$schema", "https://opencode.ai/config.json")
+    server = {"type": "local", "command": [python, entry],
+              "environment": {"DATABRICKS_CONFIG_PROFILE": profile}, "enabled": True}
+else:
+    server = {"command": python, "args": [entry]}
+    if defer == "true":
+        server["defer_loading"] = True
+    server["env"] = {"DATABRICKS_CONFIG_PROFILE": profile}
+cfg.setdefault(root_key, {})["databricks"] = server
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+PY
+    warn "Could not merge into $1 (comments or invalid JSON?). Left it unchanged -- add the databricks MCP server manually."
+    return 1
 }
 
 # Write/merge the Codex TOML config. Unlike the historical unified installer,
@@ -599,20 +629,7 @@ write_opencode_json() {
     fi
 
     if [ -f "$VENV_PYTHON" ]; then
-        "$VENV_PYTHON" -c "
-import json
-try:
-    with open('$path') as f: cfg = json.load(f)
-except: cfg = {}
-cfg.setdefault('\$schema', 'https://opencode.ai/config.json')
-cfg.setdefault('mcp', {})['databricks'] = {
-    'type': 'local',
-    'command': ['$VENV_PYTHON', '$MCP_ENTRY'],
-    'environment': {'DATABRICKS_CONFIG_PROFILE': '$PROFILE'},
-    'enabled': True
-}
-with open('$path', 'w') as f: json.dump(cfg, f, indent=2); f.write('\n')
-" 2>/dev/null && return
+        merge_mcp_json "$path" mcp opencode false; return
     fi
 
     if [ -f "$path" ]; then

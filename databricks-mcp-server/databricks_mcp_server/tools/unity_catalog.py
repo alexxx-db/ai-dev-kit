@@ -594,8 +594,10 @@ def manage_uc_tags(
     - unset_tags: object_type, full_name, tag_names (list of keys to remove).
       For columns: also set column_name. warehouse_id?.
     - set_comment: object_type, full_name, comment_text. For columns: column_name. warehouse_id?.
-    - query_table_tags: Search tables by tags. catalog_filter?, tag_name_filter?, tag_value_filter?, limit? (default 100).
-    - query_column_tags: Search columns by tags. catalog_filter?, table_name_filter?, tag_name_filter?, tag_value_filter?, limit?.
+    - query_table_tags: Search tables by tags.
+      catalog_filter?, tag_name_filter?, tag_value_filter?, limit? (default 100).
+    - query_column_tags: Search columns by tags.
+      catalog_filter?, table_name_filter?, tag_name_filter?, tag_value_filter?, limit?.
 
     Returns: set/unset={status}, query={data: [...]}."""
     act = action.lower()

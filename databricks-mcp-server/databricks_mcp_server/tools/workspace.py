@@ -235,6 +235,7 @@ def manage_workspace(
 ) -> Dict[str, Any]:
     """Manage active Databricks workspace connection (session-scoped).
 
-    Actions: status (current workspace), list (profiles from ~/.databrickscfg), switch (profile or host), login (OAuth via CLI).
+    Actions: status (current workspace), list (profiles from ~/.databrickscfg),
+    switch (profile or host), login (OAuth via CLI).
     Returns: {host, profile, username} or {profiles: [...]}."""
     return _manage_workspace_impl(action=action, profile=profile, host=host)

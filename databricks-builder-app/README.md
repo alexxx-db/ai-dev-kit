@@ -130,6 +130,16 @@ The app supports multi-user authentication using per-request credentials:
 
 This ensures each user's requests use their own Databricks credentials, enabling proper access control and audit logging.
 
+#### Security model
+
+All projects run as **one OS user** inside the app container. File tools
+(`Read`/`Write`/`Edit`/`Glob`/`Grep`) are confined to the project directory, and
+credential files are removed after each turn, but `Bash` is not sandboxed: a
+user's agent can read other projects' files, a concurrent user's credentials, and
+the app service principal's credentials (via the server process environment).
+Treat a deployment as a **single trust domain** — grant `CAN_USE` only to users
+who may act as each other and as the app's service principal.
+
 ### 3. Skills + Databricks CLI
 
 The agent runs **without** MCP servers. Project skills provide product-specific

@@ -677,6 +677,11 @@ run_uninstall() {
         # renders: "Remove from current directory ..." / "Remove from home directory ..."
     fi
     [ "$SCOPE" = "global" ] && base_dir="$HOME" || base_dir="$(pwd)"
+    # From $HOME every project-scope location IS a global one, so a project
+    # uninstall here would remove the global install.
+    if [ "$SCOPE" = "project" ] && [ "$(cd "$base_dir" && pwd -P)" = "$(cd "$HOME" && pwd -P)" ]; then
+        die "Project-scope uninstall from your home directory would remove the global install. Run it from the project directory, or pass --global."
+    fi
     install_dir="${AIDEVKIT_HOME:-$HOME/.ai-dev-kit}"
     [ "$SCOPE" = "global" ] && state_dir="$install_dir" || state_dir="$base_dir/.ai-dev-kit"
     VENV_PYTHON="$install_dir/.venv/bin/python"

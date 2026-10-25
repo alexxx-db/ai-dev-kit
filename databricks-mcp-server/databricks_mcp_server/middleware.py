@@ -42,7 +42,6 @@ class TimeoutHandlingMiddleware(Middleware):
         call_next: CallNext[CallToolRequestParams, ToolResult],
     ) -> ToolResult:
         tool_name = context.message.name
-        arguments = context.message.arguments
 
         try:
             result = await call_next(context)
@@ -78,17 +77,21 @@ class TimeoutHandlingMiddleware(Middleware):
             # which bypasses outputSchema validation. Returning a ToolResult here
             # would be treated as a success and fail validation when outputSchema
             # is defined (e.g., tools with -> Dict[str, Any] return type).
-            raise ToolError(json.dumps({
-                "error": True,
-                "error_type": "timeout",
-                "tool": tool_name,
-                "message": str(e) or "Operation timed out",
-                "action_required": (
-                    "Operation may still be in progress. "
-                    "Do NOT retry the same call. "
-                    "Use the appropriate get/status tool to check current state."
-                ),
-            })) from e
+            raise ToolError(
+                json.dumps(
+                    {
+                        "error": True,
+                        "error_type": "timeout",
+                        "tool": tool_name,
+                        "message": str(e) or "Operation timed out",
+                        "action_required": (
+                            "Operation may still be in progress. "
+                            "Do NOT retry the same call. "
+                            "Use the appropriate get/status tool to check current state."
+                        ),
+                    }
+                )
+            ) from e
 
         except anyio.get_cancelled_exc_class():
             # Re-raise CancelledError so MCP SDK's handler catches it and skips
@@ -115,9 +118,13 @@ class TimeoutHandlingMiddleware(Middleware):
             # which bypasses outputSchema validation. Returning a ToolResult here
             # would be treated as a success and fail validation when outputSchema
             # is defined (e.g., tools with -> Dict[str, Any] return type).
-            raise ToolError(json.dumps({
-                "error": True,
-                "error_type": type(e).__name__,
-                "tool": tool_name,
-                "message": str(e),
-            })) from e
+            raise ToolError(
+                json.dumps(
+                    {
+                        "error": True,
+                        "error_type": type(e).__name__,
+                        "tool": tool_name,
+                        "message": str(e),
+                    }
+                )
+            ) from e

@@ -82,11 +82,15 @@ async def get_current_user(request: Request) -> str:
   # 1. X-Forwarded-Email (M2M callers forwarding real user identity)
   # Checked first so that when an M2M caller (e.g. Lemma) explicitly sets the
   # real user's SCIM identity, it takes priority over X-Forwarded-User which
-  # the proxy overwrites with the service principal's identity.
+  # the proxy overwrites with the service principal's identity. The header can
+  # be caller-supplied, so in production it must match the identity behind the
+  # request's token, or that identity must be a trusted M2M caller.
   forwarded_email = request.headers.get('X-Forwarded-Email')
   if forwarded_email:
-    logger.debug(f'Got user from X-Forwarded-Email header: {forwarded_email}')
-    return forwarded_email
+    if _is_local_development() or await _forwarded_email_is_trusted(request, forwarded_email):
+      logger.debug(f'Got user from X-Forwarded-Email header: {forwarded_email}')
+      return forwarded_email
+    logger.warning(f'Ignoring unverified X-Forwarded-Email header: {forwarded_email}')
 
   # 2. X-Forwarded-User (Databricks Apps proxy for browser users)
   user = request.headers.get('X-Forwarded-User')
@@ -116,6 +120,27 @@ async def get_current_user(request: Request) -> str:
     'No X-Forwarded-User/X-Forwarded-Email header found, no valid Bearer token, '
     'and not in development mode. Ensure the app is deployed with user authentication enabled.'
   )
+
+
+def _trusted_m2m_callers() -> set[str]:
+  """Identities allowed to act on behalf of another user via X-Forwarded-Email."""
+  raw = os.getenv('BUILDER_APP_TRUSTED_M2M_CALLERS', '')
+  return {c.strip().lower() for c in raw.split(',') if c.strip()}
+
+
+async def _forwarded_email_is_trusted(request: Request, forwarded_email: str) -> bool:
+  """Check X-Forwarded-Email against the identity behind the request's token."""
+  token = request.headers.get('X-Forwarded-Access-Token')
+  if not token:
+    auth_header = request.headers.get('Authorization', '')
+    token = auth_header[7:] if auth_header.startswith('Bearer ') else ''
+  if not token:
+    return False
+  try:
+    identity = (await _resolve_bearer_user(token)).lower()
+  except ValueError:
+    return False
+  return identity == forwarded_email.lower() or identity in _trusted_m2m_callers()
 
 
 async def get_current_token(request: Request) -> str | None:

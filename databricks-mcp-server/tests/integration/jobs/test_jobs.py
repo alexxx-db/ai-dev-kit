@@ -250,22 +250,19 @@ class TestManageJobs:
 
         # Verify email_notifications was persisted
         email_notif = settings.get("email_notifications", {})
-        assert email_notif.get("no_alert_for_skipped_runs") is True, \
+        assert email_notif.get("no_alert_for_skipped_runs") is True, (
             f"email_notifications should be persisted: {email_notif}"
+        )
 
         # Verify schedule was persisted
         schedule = settings.get("schedule", {})
-        assert schedule.get("quartz_cron_expression") == "0 0 9 * * ?", \
-            f"schedule should be persisted: {schedule}"
-        assert schedule.get("timezone_id") == "UTC", \
-            f"schedule timezone should be UTC: {schedule}"
-        assert schedule.get("pause_status") == "PAUSED", \
-            f"schedule should be paused: {schedule}"
+        assert schedule.get("quartz_cron_expression") == "0 0 9 * * ?", f"schedule should be persisted: {schedule}"
+        assert schedule.get("timezone_id") == "UTC", f"schedule timezone should be UTC: {schedule}"
+        assert schedule.get("pause_status") == "PAUSED", f"schedule should be paused: {schedule}"
 
         # Verify queue was persisted
         queue = settings.get("queue", {})
-        assert queue.get("enabled") is True, \
-            f"queue should be enabled: {queue}"
+        assert queue.get("enabled") is True, f"queue should be enabled: {queue}"
 
         logger.info("Successfully created job with optional params and verified they were persisted")
 
@@ -345,12 +342,12 @@ class TestManageJobs:
         try:
             get_after = manage_jobs(action="get", job_id=str(job_id))
             # If we get here without exception, check for error in response
-            assert "error" in get_after or "not found" in str(get_after).lower(), \
-                f"Job should be deleted: {get_after}"
+            assert "error" in get_after or "not found" in str(get_after).lower(), f"Job should be deleted: {get_after}"
         except Exception as e:
             # Exception is expected - job doesn't exist
-            assert "does not exist" in str(e).lower() or "not found" in str(e).lower(), \
+            assert "does not exist" in str(e).lower() or "not found" in str(e).lower(), (
                 f"Expected 'does not exist' error, got: {e}"
+            )
             logger.info(f"Confirmed job was deleted - get raised expected error: {e}")
 
     def test_invalid_action(self):
@@ -543,8 +540,7 @@ class TestJobUpdate:
         updated_tasks = get_after.get("settings", {}).get("tasks", [])
         task_keys = [t.get("task_key") for t in updated_tasks]
         # Partial update adds the new task to existing tasks
-        assert "updated_task" in task_keys, \
-            f"updated_task should be in task list: {task_keys}"
+        assert "updated_task" in task_keys, f"updated_task should be in task list: {task_keys}"
         assert len(updated_tasks) >= 1, f"Should have at least 1 task after update: {updated_tasks}"
 
 
@@ -590,7 +586,7 @@ dbutils.notebook.exit("COMPLETED")
             from databricks_mcp_server.tools.file import manage_workspace_files
 
             # Get user from test_notebook_path
-            user = test_notebook_path.split('/Users/')[1].split('/')[0]
+            user = test_notebook_path.split("/Users/")[1].split("/")[0]
             # Use the same resources folder that the fixture already created
             # This ensures the parent directory exists
             notebook_path = f"/Workspace/Users/{user}/ai_dev_kit_test/jobs/resources/long_notebook"
@@ -603,8 +599,9 @@ dbutils.notebook.exit("COMPLETED")
                 overwrite=True,
             )
             logger.info(f"Upload result for cancel test notebook: {upload_result}")
-            assert upload_result.get("success", False) or upload_result.get("status") == "success", \
+            assert upload_result.get("success", False) or upload_result.get("status") == "success", (
                 f"Failed to upload cancel test notebook: {upload_result}"
+            )
 
             # Create job
             create_result = manage_jobs(
@@ -694,4 +691,5 @@ dbutils.notebook.exit("COMPLETED")
         finally:
             # Cleanup temp directory
             import shutil
+
             shutil.rmtree(temp_dir, ignore_errors=True)

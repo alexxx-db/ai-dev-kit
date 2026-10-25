@@ -64,11 +64,7 @@ def simple_dashboard_json() -> str:
     """Create a simple dashboard JSON for testing."""
     dashboard = {
         "datasets": [
-            {
-                "name": "simple_data",
-                "displayName": "Simple Data",
-                "queryLines": ["SELECT 1 as id, 'test' as value"]
-            }
+            {"name": "simple_data", "displayName": "Simple Data", "queryLines": ["SELECT 1 as id, 'test' as value"]}
         ],
         "pages": [
             {
@@ -85,24 +81,22 @@ def simple_dashboard_json() -> str:
                                     "query": {
                                         "datasetName": "simple_data",
                                         "fields": [{"name": "id", "expression": "`id`"}],
-                                        "disaggregated": True
-                                    }
+                                        "disaggregated": True,
+                                    },
                                 }
                             ],
                             "spec": {
                                 "version": 2,
                                 "widgetType": "counter",
-                                "encodings": {
-                                    "value": {"fieldName": "id", "displayName": "Count"}
-                                },
-                                "frame": {"title": "Test Counter", "showTitle": True}
-                            }
+                                "encodings": {"value": {"fieldName": "id", "displayName": "Count"}},
+                                "frame": {"title": "Test Counter", "showTitle": True},
+                            },
                         },
-                        "position": {"x": 0, "y": 0, "width": 2, "height": 3}
+                        "position": {"x": 0, "y": 0, "width": 2, "height": 3},
                     }
-                ]
+                ],
             }
-        ]
+        ],
     }
     return json.dumps(dashboard)
 
@@ -221,8 +215,9 @@ class TestDashboardLifecycle:
 
         # Verify dashboard name
         retrieved_name = get_result.get("display_name") or get_result.get("name")
-        assert dashboard_name in str(retrieved_name), \
+        assert dashboard_name in str(retrieved_name), (
             f"Dashboard name mismatch: expected {dashboard_name}, got {retrieved_name}"
+        )
 
         # Verify dashboard has serialized content (proving it was created with our definition)
         serialized = get_result.get("serialized_dashboard")
@@ -269,8 +264,9 @@ class TestDashboardLifecycle:
         # Verify dashboard is gone
         get_after_delete = manage_dashboard(action="get", dashboard_id=dashboard_id)
         # Should return error or indicate not found
-        assert "error" in get_after_delete or get_after_delete.get("lifecycle_state") == "TRASHED", \
+        assert "error" in get_after_delete or get_after_delete.get("lifecycle_state") == "TRASHED", (
             f"Dashboard should be deleted/trashed: {get_after_delete}"
+        )
 
 
 @pytest.mark.integration
@@ -312,7 +308,7 @@ class TestDashboardUpdate:
                 {
                     "name": "updated_data",
                     "displayName": "Updated Data",
-                    "queryLines": ["SELECT 42 as answer, 'updated' as status"]
+                    "queryLines": ["SELECT 42 as answer, 'updated' as status"],
                 }
             ],
             "pages": [
@@ -330,24 +326,22 @@ class TestDashboardUpdate:
                                         "query": {
                                             "datasetName": "updated_data",
                                             "fields": [{"name": "answer", "expression": "`answer`"}],
-                                            "disaggregated": True
-                                        }
+                                            "disaggregated": True,
+                                        },
                                     }
                                 ],
                                 "spec": {
                                     "version": 2,
                                     "widgetType": "counter",
-                                    "encodings": {
-                                        "value": {"fieldName": "answer", "displayName": "Answer"}
-                                    },
-                                    "frame": {"title": "Updated Counter", "showTitle": True}
-                                }
+                                    "encodings": {"value": {"fieldName": "answer", "displayName": "Answer"}},
+                                    "frame": {"title": "Updated Counter", "showTitle": True},
+                                },
                             },
-                            "position": {"x": 0, "y": 0, "width": 2, "height": 3}
+                            "position": {"x": 0, "y": 0, "width": 2, "height": 3},
                         }
-                    ]
+                    ],
                 }
-            ]
+            ],
         }
 
         # Update the dashboard
@@ -373,10 +367,10 @@ class TestDashboardUpdate:
         # Verify updated content
         serialized = get_result.get("serialized_dashboard")
         if serialized:
-            assert "updated_data" in serialized, \
-                f"Dashboard should contain updated dataset: {serialized[:200]}..."
-            assert "42" in serialized or "answer" in serialized, \
+            assert "updated_data" in serialized, f"Dashboard should contain updated dataset: {serialized[:200]}..."
+            assert "42" in serialized or "answer" in serialized, (
                 f"Dashboard should contain updated query: {serialized[:200]}..."
+            )
 
 
 @pytest.mark.integration
@@ -440,8 +434,9 @@ class TestDashboardPublish:
         logger.info(f"State after publish: {published_state}")
 
         # The dashboard should indicate it's published
-        assert published_state in ("PUBLISHED", "ACTIVE") or get_after_publish.get("is_published"), \
+        assert published_state in ("PUBLISHED", "ACTIVE") or get_after_publish.get("is_published"), (
             f"Dashboard should be published, got state: {published_state}"
+        )
 
         # Unpublish the dashboard
         unpublish_result = manage_dashboard(
@@ -462,5 +457,6 @@ class TestDashboardPublish:
         logger.info(f"State after unpublish: {unpublished_state}")
 
         # Should be back to DRAFT or similar
-        assert unpublished_state in ("DRAFT", "ACTIVE") or not get_after_unpublish.get("is_published"), \
+        assert unpublished_state in ("DRAFT", "ACTIVE") or not get_after_unpublish.get("is_published"), (
             f"Dashboard should be unpublished, got state: {unpublished_state}"
+        )

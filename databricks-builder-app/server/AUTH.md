@@ -19,7 +19,10 @@ Keychain credentials and breaks local chat.
 
 Resolved by `server/services/user.py` → `get_current_user(request)`:
 
-1. `X-Forwarded-Email` (M2M / Apps-forwarded identity)
+1. `X-Forwarded-Email` (M2M / Apps-forwarded identity) — in production only if it
+   matches the identity behind `X-Forwarded-Access-Token` / Bearer token, or that
+   identity is listed in `BUILDER_APP_TRUSTED_M2M_CALLERS` (comma-separated SP
+   application IDs allowed to act on behalf of users). Otherwise it is ignored.
 2. Bearer token identity
 3. Local development fallbacks
 

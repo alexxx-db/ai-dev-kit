@@ -3,11 +3,14 @@
 All endpoints are scoped to the current authenticated user.
 """
 
+import asyncio
 import logging
+import shutil
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from ..services.project_paths import resolve_project_dir
 from ..services.storage import ProjectStorage
 from ..services.user import get_current_user
 
@@ -99,6 +102,9 @@ async def delete_project(request: Request, project_id: str):
   if not success:
     logger.warning(f'Project not found for deletion: {project_id} for user: {user_email}')
     raise HTTPException(status_code=404, detail=f'Project {project_id} not found')
+
+  # Remove the on-disk workspace too (files, transcripts, credential files).
+  await asyncio.to_thread(shutil.rmtree, resolve_project_dir(project_id), True)
 
   logger.info(f'Deleted project {project_id} for user: {user_email}')
   return {'success': True, 'deleted_project_id': project_id}

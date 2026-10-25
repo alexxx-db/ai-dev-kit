@@ -453,9 +453,7 @@ class TestRepairRun:
 
         # Replace the failing notebook with a passing one
         passing_content = (
-            "# Databricks notebook source\n"
-            "print('Repaired successfully')\n"
-            "dbutils.notebook.exit('success')\n"
+            "# Databricks notebook source\nprint('Repaired successfully')\ndbutils.notebook.exit('success')\n"
         )
         content_b64 = base64.b64encode(passing_content.encode("utf-8")).decode("utf-8")
         w.workspace.import_(

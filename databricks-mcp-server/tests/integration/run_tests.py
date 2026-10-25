@@ -42,6 +42,7 @@ class Colors:
 @dataclass
 class TestResult:
     """Result from a single test folder."""
+
     folder: str
     passed: int = 0
     failed: int = 0
@@ -122,12 +123,15 @@ def run_test_folder(
     # Build pytest command
     test_path = Path(__file__).parent / folder
     cmd = [
-        sys.executable, "-m", "pytest",
+        sys.executable,
+        "-m",
+        "pytest",
         str(test_path),
         "-v",
         "-s",  # Stream output to see real-time logs
         "--tb=short",
-        "-m", "integration" if not include_slow else "integration or slow",
+        "-m",
+        "integration" if not include_slow else "integration or slow",
     ]
 
     start_time = time.time()
@@ -295,7 +299,10 @@ def print_summary(results: list[TestResult], total_duration: float, output_dir: 
     for r in sorted(results, key=lambda x: (x.success, -x.failed)):
         status = f"{Colors.GREEN}PASS{Colors.RESET}" if r.success else f"{Colors.RED}FAIL{Colors.RESET}"
         failed_str = f"{Colors.RED}{r.failed}{Colors.RESET}" if r.failed > 0 else str(r.failed)
-        print(f"    {r.folder:<20} {status:<19} {r.passed:<8} {failed_str:<17} {r.skipped:<8} {format_duration(r.duration)}")
+        print(
+            f"    {r.folder:<20} {status:<19} {r.passed:<8} {failed_str:<17} {r.skipped:<8} "
+            f"{format_duration(r.duration)}"
+        )
 
     print()
 
@@ -318,9 +325,9 @@ def print_summary(results: list[TestResult], total_duration: float, output_dir: 
 
     # Quick commands
     print(f"  {Colors.BOLD}Useful Commands:{Colors.RESET}")
-    print(f"    View report:    python tests/integration/run_tests.py --report")
-    print(f"    Check status:   python tests/integration/run_tests.py --status")
-    print(f"    Re-run failed:  python -m pytest <folder> -v --tb=long")
+    print("    View report:    python tests/integration/run_tests.py --report")
+    print("    Check status:   python tests/integration/run_tests.py --status")
+    print("    Re-run failed:  python -m pytest <folder> -v --tb=long")
     print()
 
 
@@ -365,32 +372,35 @@ def list_all_runs() -> list[dict]:
         if json_file.exists():
             try:
                 data = json.loads(json_file.read_text())
-                runs.append({
-                    "dir": run_dir,
-                    "timestamp": run_dir.name,
-                    "status": data.get("status", "completed"),
-                    "data": data,
-                })
+                runs.append(
+                    {
+                        "dir": run_dir,
+                        "timestamp": run_dir.name,
+                        "status": data.get("status", "completed"),
+                        "data": data,
+                    }
+                )
             except json.JSONDecodeError:
-                runs.append({
-                    "dir": run_dir,
-                    "timestamp": run_dir.name,
-                    "status": "error",
-                    "data": None,
-                })
+                runs.append(
+                    {
+                        "dir": run_dir,
+                        "timestamp": run_dir.name,
+                        "status": "error",
+                        "data": None,
+                    }
+                )
         else:
             # Check if any log files indicate running tests
             log_files = list(run_dir.glob("*.txt"))
-            has_running = any(
-                f.read_text().startswith("[RUNNING]")
-                for f in log_files if f.exists()
+            has_running = any(f.read_text().startswith("[RUNNING]") for f in log_files if f.exists())
+            runs.append(
+                {
+                    "dir": run_dir,
+                    "timestamp": run_dir.name,
+                    "status": "running" if has_running else "incomplete",
+                    "data": None,
+                }
             )
-            runs.append({
-                "dir": run_dir,
-                "timestamp": run_dir.name,
-                "status": "running" if has_running else "incomplete",
-                "data": None,
-            })
 
     return runs
 
@@ -403,7 +413,7 @@ def show_status():
 
     if not runs:
         print(f"  {Colors.YELLOW}No test runs found.{Colors.RESET}")
-        print(f"  Run tests with: python tests/integration/run_tests.py")
+        print("  Run tests with: python tests/integration/run_tests.py")
         return
 
     # Get the most recent run (running or completed)
@@ -434,7 +444,7 @@ def show_status():
     running_count = 0
     completed_count = 0
 
-    for folder, (status, result) in folder_status.items():
+    for status, result in folder_status.values():
         if status == "running":
             running_count += 1
         elif result:
@@ -487,7 +497,7 @@ def show_status():
         print()
 
     print(f"  {Colors.BOLD}Commands:{Colors.RESET}")
-    print(f"    View full report:  python tests/integration/run_tests.py --report")
+    print("    View full report:  python tests/integration/run_tests.py --report")
     print()
 
 
@@ -562,7 +572,7 @@ def cleanup_results(keep_last: int = 5):
 
     results_dir = get_results_dir()
     if not results_dir.exists():
-        print(f"  No test results to clean up.")
+        print("  No test results to clean up.")
         return
 
     dirs = sorted([d for d in results_dir.iterdir() if d.is_dir()])
@@ -614,8 +624,7 @@ def run_all_tests(include_slow: bool = False, max_workers: int = 8):
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all tasks
         future_to_folder = {
-            executor.submit(run_test_folder, folder, output_dir, include_slow): folder
-            for folder in folders
+            executor.submit(run_test_folder, folder, output_dir, include_slow): folder for folder in folders
         }
 
         # Track running
@@ -662,19 +671,22 @@ Examples:
     )
 
     parser.add_argument(
-        "--all", "-a",
+        "--all",
+        "-a",
         action="store_true",
         help="Include slow tests",
     )
     parser.add_argument(
-        "--report", "-r",
+        "--report",
+        "-r",
         nargs="?",
         const="latest",
         metavar="TIMESTAMP",
         help="Show report from a previous run (default: latest)",
     )
     parser.add_argument(
-        "--status", "-s",
+        "--status",
+        "-s",
         action="store_true",
         help="Show status of ongoing and recent test runs",
     )
@@ -684,7 +696,8 @@ Examples:
         help="Delete old test result directories (keeps last 5)",
     )
     parser.add_argument(
-        "-j", "--jobs",
+        "-j",
+        "--jobs",
         type=int,
         default=8,
         help="Number of parallel test workers (default: 8)",

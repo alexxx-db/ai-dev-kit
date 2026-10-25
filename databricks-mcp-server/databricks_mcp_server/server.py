@@ -55,8 +55,6 @@ def _patch_subprocess_stdin():
     subprocess.Popen = _PatchedPopen
 
 
-
-
 def _wrap_sync_in_thread(fn):
     """Wrap a sync function to run in asyncio.to_thread(), preserving metadata."""
 
@@ -112,6 +110,7 @@ def _patch_tool_decorator_for_async():
         return original_tool(fn, *args, **kwargs)
 
     mcp.tool = patched_tool
+
 
 # ---------------------------------------------------------------------------
 # Server initialisation

@@ -127,6 +127,7 @@ def manage_dashboard(
         result = _trash_dashboard(dashboard_id=dashboard_id)
         try:
             from ..manifest import remove_resource
+
             remove_resource(resource_type="dashboard", resource_id=dashboard_id)
         except Exception:
             pass
@@ -150,5 +151,7 @@ def manage_dashboard(
 
     else:
         return {
-            "error": f"Invalid action '{action}'. Valid actions: create_or_update, get, list, delete, publish, unpublish"
+            "error": (
+                f"Invalid action '{action}'. Valid actions: create_or_update, get, list, delete, publish, unpublish"
+            )
         }

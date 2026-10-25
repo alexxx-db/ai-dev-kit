@@ -61,7 +61,6 @@ class TestManageWorkspaceFiles:
     ):
         """Should upload a single file to workspace and verify it exists as FILE type (not NOTEBOOK)."""
         upload_path = f"{workspace_test_path}/single_file_test"
-        file_name = Path(test_local_file).name
 
         result = manage_workspace_files(
             action="upload",
@@ -77,7 +76,9 @@ class TestManageWorkspaceFiles:
 
         # List the parent directory to see what was created
         parent_objects = list(workspace_client.workspace.list(workspace_test_path))
-        logger.info(f"Objects in parent {workspace_test_path}: {[(obj.path, obj.object_type) for obj in parent_objects]}")
+        logger.info(
+            f"Objects in parent {workspace_test_path}: {[(obj.path, obj.object_type) for obj in parent_objects]}"
+        )
 
         # Find what was created at our upload_path
         created_obj = next((obj for obj in parent_objects if "single_file_test" in obj.path), None)
@@ -103,9 +104,10 @@ class TestManageWorkspaceFiles:
         logger.info(f"Uploaded file object_type: {object_type}")
 
         # Python files should be stored as FILE, not NOTEBOOK
-        assert object_type == "FILE", \
-            f"Python file should be uploaded as FILE type, not {object_type}. " \
+        assert object_type == "FILE", (
+            f"Python file should be uploaded as FILE type, not {object_type}. "
             f"This indicates a bug where .py files are converted to notebooks during import."
+        )
 
     def test_upload_directory(
         self,
@@ -215,7 +217,7 @@ class TestManageWorkspaceFiles:
                 "readme.txt": ("Plain text file", "FILE"),
             }
 
-            for filename, (content, expected_type) in test_files.items():
+            for filename, (content, _expected_type) in test_files.items():
                 (temp_path / filename).write_text(content)
 
             # Upload all files
@@ -238,22 +240,24 @@ class TestManageWorkspaceFiles:
             if objects and objects[0].object_type and objects[0].object_type.value == "DIRECTORY":
                 inner_dir = objects[0].path
                 objects = list(workspace_client.workspace.list(inner_dir))
-                logger.info(f"Listed objects in nested dir {inner_dir}: {[(obj.path, obj.object_type) for obj in objects]}")
+                logger.info(
+                    f"Listed objects in nested dir {inner_dir}: {[(obj.path, obj.object_type) for obj in objects]}"
+                )
 
             for filename, (_, expected_type) in test_files.items():
                 # Find this file in the listing
-                file_obj = next(
-                    (obj for obj in objects if filename in obj.path),
-                    None
-                )
+                file_obj = next((obj for obj in objects if filename in obj.path), None)
 
-                assert file_obj is not None, f"File {filename} not found in workspace listing: {[obj.path for obj in objects]}"
+                assert file_obj is not None, (
+                    f"File {filename} not found in workspace listing: {[obj.path for obj in objects]}"
+                )
 
                 actual_type = file_obj.object_type.value if file_obj.object_type else None
 
-                assert actual_type == expected_type, \
-                    f"File {filename} should be {expected_type}, but got {actual_type}. " \
+                assert actual_type == expected_type, (
+                    f"File {filename} should be {expected_type}, but got {actual_type}. "
                     f"This indicates a bug in file type handling during workspace import."
+                )
 
             logger.info("All file types preserved correctly")
 
@@ -296,10 +300,10 @@ class TestNotebookUpload:
             info = workspace_client.workspace.get_status(upload_path)
             logger.info(f"Python notebook status: type={info.object_type}, language={info.language}")
 
-            assert info.object_type.value == "NOTEBOOK", \
+            assert info.object_type.value == "NOTEBOOK", (
                 f"Python notebook should be NOTEBOOK type, got {info.object_type}"
-            assert info.language.value == "PYTHON", \
-                f"Python notebook should have PYTHON language, got {info.language}"
+            )
+            assert info.language.value == "PYTHON", f"Python notebook should have PYTHON language, got {info.language}"
 
         finally:
             Path(temp_path).unlink(missing_ok=True)
@@ -333,10 +337,8 @@ class TestNotebookUpload:
             info = workspace_client.workspace.get_status(upload_path)
             logger.info(f"SQL notebook status: type={info.object_type}, language={info.language}")
 
-            assert info.object_type.value == "NOTEBOOK", \
-                f"SQL notebook should be NOTEBOOK type, got {info.object_type}"
-            assert info.language.value == "SQL", \
-                f"SQL notebook should have SQL language, got {info.language}"
+            assert info.object_type.value == "NOTEBOOK", f"SQL notebook should be NOTEBOOK type, got {info.object_type}"
+            assert info.language.value == "SQL", f"SQL notebook should have SQL language, got {info.language}"
 
         finally:
             Path(temp_path).unlink(missing_ok=True)
@@ -350,7 +352,7 @@ class TestNotebookUpload:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".scala", delete=False) as f:
             # Write Databricks notebook marker + content
             f.write("// Databricks notebook source\n")
-            f.write("println(\"Hello from Scala notebook\")\n")
+            f.write('println("Hello from Scala notebook")\n')
             temp_path = f.name
 
         try:
@@ -370,10 +372,10 @@ class TestNotebookUpload:
             info = workspace_client.workspace.get_status(upload_path)
             logger.info(f"Scala notebook status: type={info.object_type}, language={info.language}")
 
-            assert info.object_type.value == "NOTEBOOK", \
+            assert info.object_type.value == "NOTEBOOK", (
                 f"Scala notebook should be NOTEBOOK type, got {info.object_type}"
-            assert info.language.value == "SCALA", \
-                f"Scala notebook should have SCALA language, got {info.language}"
+            )
+            assert info.language.value == "SCALA", f"Scala notebook should have SCALA language, got {info.language}"
 
         finally:
             Path(temp_path).unlink(missing_ok=True)
@@ -408,9 +410,10 @@ class TestNotebookUpload:
             info = workspace_client.workspace.get_status(upload_path)
             logger.info(f"Regular Python file status: type={info.object_type}")
 
-            assert info.object_type.value == "FILE", \
-                f"Regular Python file should be FILE type, got {info.object_type}. " \
+            assert info.object_type.value == "FILE", (
+                f"Regular Python file should be FILE type, got {info.object_type}. "
                 f"Files without notebook markers should NOT be converted to notebooks."
+            )
 
         finally:
             Path(temp_path).unlink(missing_ok=True)
@@ -444,9 +447,10 @@ class TestNotebookUpload:
             info = workspace_client.workspace.get_status(upload_path)
             logger.info(f"Regular SQL file status: type={info.object_type}")
 
-            assert info.object_type.value == "FILE", \
-                f"Regular SQL file should be FILE type, got {info.object_type}. " \
+            assert info.object_type.value == "FILE", (
+                f"Regular SQL file should be FILE type, got {info.object_type}. "
                 f"Files without notebook markers should NOT be converted to notebooks."
+            )
 
         finally:
             Path(temp_path).unlink(missing_ok=True)
@@ -463,32 +467,12 @@ class TestNotebookUpload:
             # Create various file types
             test_files = {
                 # Notebooks (with marker)
-                "notebook_python.py": (
-                    "# Databricks notebook source\nprint('Python notebook')",
-                    "NOTEBOOK",
-                    "PYTHON"
-                ),
-                "notebook_sql.sql": (
-                    "-- Databricks notebook source\nSELECT 1",
-                    "NOTEBOOK",
-                    "SQL"
-                ),
+                "notebook_python.py": ("# Databricks notebook source\nprint('Python notebook')", "NOTEBOOK", "PYTHON"),
+                "notebook_sql.sql": ("-- Databricks notebook source\nSELECT 1", "NOTEBOOK", "SQL"),
                 # Regular files (no marker)
-                "script.py": (
-                    "# Regular script\nprint('hello')",
-                    "FILE",
-                    None
-                ),
-                "query.sql": (
-                    "-- Regular query\nSELECT * FROM table",
-                    "FILE",
-                    None
-                ),
-                "data.json": (
-                    '{"key": "value"}',
-                    "FILE",
-                    None
-                ),
+                "script.py": ("# Regular script\nprint('hello')", "FILE", None),
+                "query.sql": ("-- Regular query\nSELECT * FROM table", "FILE", None),
+                "data.json": ('{"key": "value"}', "FILE", None),
             }
 
             for filename, (content, _, _) in test_files.items():
@@ -516,27 +500,27 @@ class TestNotebookUpload:
                     # Notebooks are stored without extension
                     name_without_ext = filename.rsplit(".", 1)[0]
                     file_obj = next(
-                        (obj for obj in objects if name_without_ext in obj.path and expected_type == obj.object_type.value),
-                        None
+                        (
+                            obj
+                            for obj in objects
+                            if name_without_ext in obj.path and expected_type == obj.object_type.value
+                        ),
+                        None,
                     )
                 else:
                     # Regular files keep their extension
-                    file_obj = next(
-                        (obj for obj in objects if filename in obj.path),
-                        None
-                    )
+                    file_obj = next((obj for obj in objects if filename in obj.path), None)
 
-                assert file_obj is not None, \
-                    f"File {filename} not found in workspace: {[obj.path for obj in objects]}"
+                assert file_obj is not None, f"File {filename} not found in workspace: {[obj.path for obj in objects]}"
 
                 actual_type = file_obj.object_type.value if file_obj.object_type else None
-                assert actual_type == expected_type, \
-                    f"File {filename} should be {expected_type}, got {actual_type}"
+                assert actual_type == expected_type, f"File {filename} should be {expected_type}, got {actual_type}"
 
                 if expected_lang:
                     actual_lang = file_obj.language.value if file_obj.language else None
-                    assert actual_lang == expected_lang, \
+                    assert actual_lang == expected_lang, (
                         f"Notebook {filename} should have language {expected_lang}, got {actual_lang}"
+                    )
 
             logger.info("All files in mixed directory have correct types")
 
@@ -571,17 +555,14 @@ class TestNotebookUpload:
             objects = list(workspace_client.workspace.list(dir_path))
             logger.info(f"Directory contents: {[(obj.path, obj.object_type, obj.language) for obj in objects]}")
 
-            assert len(objects) > 0, f"Directory should contain the uploaded notebook"
+            assert len(objects) > 0, "Directory should contain the uploaded notebook"
 
             # Find the notebook
-            notebook = next(
-                (obj for obj in objects if obj.object_type.value == "NOTEBOOK"),
-                None
-            )
-            assert notebook is not None, \
+            notebook = next((obj for obj in objects if obj.object_type.value == "NOTEBOOK"), None)
+            assert notebook is not None, (
                 f"Should find a NOTEBOOK in directory, got: {[(obj.path, obj.object_type) for obj in objects]}"
-            assert notebook.language.value == "PYTHON", \
-                f"Notebook should be PYTHON, got {notebook.language}"
+            )
+            assert notebook.language.value == "PYTHON", f"Notebook should be PYTHON, got {notebook.language}"
 
         finally:
             Path(temp_path).unlink(missing_ok=True)

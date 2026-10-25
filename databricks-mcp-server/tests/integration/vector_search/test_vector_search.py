@@ -238,7 +238,11 @@ class TestVsIndexLifecycle:
             log_time(f"Create result: {create_result}")
             assert not create_result.get("error"), f"Create index failed: {create_result}"
             # create_or_update returns "created" boolean and may have "status" field
-            assert create_result.get("created") is True or create_result.get("status") in ("CREATING", "ALREADY_EXISTS", None)
+            assert create_result.get("created") is True or create_result.get("status") in (
+                "CREATING",
+                "ALREADY_EXISTS",
+                None,
+            )
 
             # Step 2: Wait for index to be ready and verify via get
             log_time("Step 2: Waiting for index to be ready...")
@@ -275,8 +279,9 @@ class TestVsIndexLifecycle:
 
             # Verify the expected document is found
             result_contents = str(results)
-            assert "doc1" in result_contents or "Databricks" in result_contents or "analytics" in result_contents, \
+            assert "doc1" in result_contents or "Databricks" in result_contents or "analytics" in result_contents, (
                 f"Query should return doc about Databricks analytics: {results}"
+            )
 
             # Step 4: Delete the index
             log_time("Step 4: Deleting index...")
@@ -289,8 +294,9 @@ class TestVsIndexLifecycle:
             time.sleep(10)
             get_after = manage_vs_index(action="get", name=index_name)
             log_time(f"Get after delete: {get_after}")
-            assert get_after.get("state") == "NOT_FOUND" or "error" in get_after, \
+            assert get_after.get("state") == "NOT_FOUND" or "error" in get_after, (
                 f"Index should be deleted: {get_after}"
+            )
 
             log_time("Full index lifecycle test PASSED!")
 
@@ -333,8 +339,7 @@ class TestVsEndpointLifecycle:
             time.sleep(5)
             get_before = manage_vs_endpoint(action="get", name=VS_ENDPOINT_DELETE)
             log_time(f"Get result: {get_before}")
-            assert get_before.get("state") != "NOT_FOUND", \
-                f"Endpoint should exist after create: {get_before}"
+            assert get_before.get("state") != "NOT_FOUND", f"Endpoint should exist after create: {get_before}"
 
             # Step 3: Delete endpoint
             log_time("Step 3: Deleting endpoint...")
@@ -347,8 +352,9 @@ class TestVsEndpointLifecycle:
             time.sleep(5)
             get_after = manage_vs_endpoint(action="get", name=VS_ENDPOINT_DELETE)
             log_time(f"Get after delete: {get_after}")
-            assert get_after.get("state") == "NOT_FOUND" or "error" in get_after, \
+            assert get_after.get("state") == "NOT_FOUND" or "error" in get_after, (
                 f"Endpoint should be deleted: {get_after}"
+            )
 
             log_time("Full endpoint lifecycle test PASSED!")
 

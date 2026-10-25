@@ -19,6 +19,7 @@ from .test_config import TEST_CATALOG, SCHEMAS, TEST_RESOURCE_PREFIX, get_full_s
 _env_file = Path(__file__).parent.parent / ".env.test"
 if _env_file.exists():
     from dotenv import load_dotenv
+
     load_dotenv(_env_file)
     logging.getLogger(__name__).info(f"Loaded environment from {_env_file}")
 
@@ -34,6 +35,7 @@ def pytest_configure(config):
 # =============================================================================
 # Core Fixtures (Session-scoped)
 # =============================================================================
+
 
 @pytest.fixture(scope="session")
 def workspace_client() -> WorkspaceClient:
@@ -121,6 +123,7 @@ def warehouse_id(workspace_client: WorkspaceClient) -> str:
 # =============================================================================
 # Schema Fixtures (Module-scoped, per test module)
 # =============================================================================
+
 
 def _create_test_schema(
     workspace_client: WorkspaceClient,
@@ -223,6 +226,7 @@ def pdf_schema(workspace_client: WorkspaceClient, test_catalog: str) -> Generato
 # =============================================================================
 # Cleanup Fixtures
 # =============================================================================
+
 
 @pytest.fixture(scope="function")
 def cleanup_pipelines() -> Generator[Callable[[str], None], None, None]:
@@ -427,6 +431,7 @@ def cleanup_mas() -> Generator[Callable[[str], None], None, None]:
 # =============================================================================
 # Workspace Path Fixtures
 # =============================================================================
+
 
 @pytest.fixture(scope="module")
 def workspace_test_path(workspace_client: WorkspaceClient, current_user: str) -> Generator[str, None, None]:

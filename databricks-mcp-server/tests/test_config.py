@@ -22,46 +22,32 @@ SCHEMAS = {
     # SQL and core tests
     "sql": "test_sql",
     "warehouse": "test_warehouse",
-
     # Pipeline tests
     "pipelines": "test_pipelines",
-
     # Vector search tests
     "vector_search": "test_vs",
-
     # Genie tests
     "genie": "test_genie",
-
     # Serving tests
     "serving": "test_serving",
-
     # Dashboard tests
     "dashboards": "test_dashboards",
-
     # Apps tests
     "apps": "test_apps",
-
     # Jobs tests
     "jobs": "test_jobs",
-
     # Volume files tests
     "volume_files": "test_volume_files",
-
     # Workspace file tests
     "workspace_files": "test_workspace_files",
-
     # Lakebase tests
     "lakebase": "test_lakebase",
-
     # Compute tests
     "compute": "test_compute",
-
     # Agent bricks tests
     "agent_bricks": "test_agent_bricks",
-
     # Unity catalog tests
     "unity_catalog": "test_uc",
-
     # PDF tests
     "pdf": "test_pdf",
 }
@@ -84,10 +70,12 @@ VS_ENDPOINT_NAMES = {
     "basic": f"{TEST_RESOURCE_PREFIX}vs_endpoint",
 }
 
+
 # Vector search index names (use schema-qualified names)
 def get_vs_index_name(index_key: str) -> str:
     """Get fully-qualified VS index name."""
     return f"{TEST_CATALOG}.{SCHEMAS['vector_search']}.{TEST_RESOURCE_PREFIX}vs_index_{index_key}"
+
 
 # Genie space names
 GENIE_SPACE_NAMES = {
@@ -123,17 +111,21 @@ VOLUME_NAMES = {
 # Helper Functions
 # =============================================================================
 
+
 def get_full_schema_name(module: str) -> str:
     """Get fully-qualified schema name for a test module."""
     return f"{TEST_CATALOG}.{SCHEMAS[module]}"
+
 
 def get_table_name(module: str, table: str) -> str:
     """Get fully-qualified table name for a test module."""
     return f"{TEST_CATALOG}.{SCHEMAS[module]}.{table}"
 
+
 def get_volume_path(module: str, volume: str = "test_volume") -> str:
     """Get volume path for a test module."""
     return f"/Volumes/{TEST_CATALOG}/{SCHEMAS[module]}/{volume}"
+
 
 def get_workspace_path(username: str, module: str) -> str:
     """Get workspace path for a test module."""

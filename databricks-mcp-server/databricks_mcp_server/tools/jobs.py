@@ -209,9 +209,12 @@ def manage_job_runs(
 ) -> Dict[str, Any]:
     """Manage job runs: run_now, repair, get, get_output, cancel, list, wait.
 
-    run_now: requires job_id, returns {run_id}. repair: requires run_id, reruns failed tasks (rerun_all_failed_tasks=True) or specific tasks (rerun_tasks=["task_key"]).
-    get/get_output/cancel/wait: require run_id. list: filter by job_id/active_only/completed_only. wait: blocks until complete (timeout default 3600s).
-    Returns: run_now={run_id}, repair={repair_id, run_id}, get=run details, get_output=logs+results, cancel={status}, list={items}, wait=full result."""
+    run_now: requires job_id, returns {run_id}. repair: requires run_id, reruns failed tasks
+    (rerun_all_failed_tasks=True) or specific tasks (rerun_tasks=["task_key"]).
+    get/get_output/cancel/wait: require run_id. list: filter by job_id/active_only/completed_only.
+    wait: blocks until complete (timeout default 3600s).
+    Returns: run_now={run_id}, repair={repair_id, run_id}, get=run details, get_output=logs+results,
+    cancel={status}, list={items}, wait=full result."""
     act = action.lower()
 
     if act == "run_now":

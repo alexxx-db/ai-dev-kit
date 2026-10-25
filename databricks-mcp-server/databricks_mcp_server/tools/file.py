@@ -55,9 +55,7 @@ def manage_workspace_files(
             "successful": result.successful,
             "failed": result.failed,
             "success": result.success,
-            "failed_uploads": [
-                {"local_path": r.local_path, "error": r.error} for r in result.get_failed_uploads()
-            ]
+            "failed_uploads": [{"local_path": r.local_path, "error": r.error} for r in result.get_failed_uploads()]
             if result.failed > 0
             else [],
         }

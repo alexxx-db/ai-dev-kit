@@ -58,9 +58,9 @@ async def get_system_prompt_endpoint(
   enabled_skills = None
   if project_id:
     await require_owned_project(request, project_id)
-    from ..services.agent import get_project_directory
+    from ..services.agent import get_project_directory_async
     from ..services.skills_manager import get_project_enabled_skills
-    project_dir = get_project_directory(project_id)
+    project_dir = await get_project_directory_async(project_id)
     enabled_skills = get_project_enabled_skills(project_dir)
 
   prompt = get_system_prompt(

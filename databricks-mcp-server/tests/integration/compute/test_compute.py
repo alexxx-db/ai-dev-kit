@@ -79,7 +79,7 @@ class TestExecuteCode:
         Tests: print output, spark.sql execution, try/except error handling.
         """
         # Comprehensive notebook that tests multiple scenarios
-        code = '''
+        code = """
 # Test 1: Basic Python output
 print("TEST1: Hello from MCP test")
 result_value = 42
@@ -104,7 +104,7 @@ if not error_caught:
 
 print("ALL TESTS PASSED")
 dbutils.notebook.exit("success")
-'''
+"""
         result = execute_code(
             code=code,
             compute_type="serverless",
@@ -122,8 +122,7 @@ dbutils.notebook.exit("success")
 
         # If we got "success" it means all internal tests passed (including SQL and error handling)
         # The notebook only exits with "success" if all tests pass
-        assert "success" in output.lower(), \
-            f"Notebook should exit with success (all internal tests passed): {output}"
+        assert "success" in output.lower(), f"Notebook should exit with success (all internal tests passed): {output}"
 
 
 @pytest.mark.integration
@@ -164,7 +163,7 @@ class TestClusterLifecycle:
                 num_workers=0,  # Single-node for cost savings
                 autotermination_minutes=10,
             )
-            log_time(f"Create took {time.time()-t0:.1f}s - Result: {create_result}")
+            log_time(f"Create took {time.time() - t0:.1f}s - Result: {create_result}")
             assert create_result.get("cluster_id"), f"Create failed: {create_result}"
             cluster_id = create_result["cluster_id"]
 
@@ -172,24 +171,24 @@ class TestClusterLifecycle:
             log_time("Step 2a: Verifying cluster via manage_cluster(get)...")
             t0 = time.time()
             status = manage_cluster(action="get", cluster_id=cluster_id)
-            log_time(f"Get took {time.time()-t0:.1f}s - Status: {status.get('state')}")
+            log_time(f"Get took {time.time() - t0:.1f}s - Status: {status.get('state')}")
             assert "error" not in status, f"Get cluster failed: {status}"
             assert status.get("cluster_name") == CLUSTER_NAME, f"Name mismatch: {status}"
 
             log_time("Step 2b: Verifying cluster via list_compute(cluster_id)...")
             t0 = time.time()
             status2 = list_compute(resource="clusters", cluster_id=cluster_id)
-            log_time(f"list_compute took {time.time()-t0:.1f}s - Status: {status2.get('state')}")
+            log_time(f"list_compute took {time.time() - t0:.1f}s - Status: {status2.get('state')}")
             assert "error" not in status2, f"list_compute failed: {status2}"
 
             # Step 3: Start the cluster
             log_time("Step 3: Starting cluster...")
             t0 = time.time()
             start_result = manage_cluster(action="start", cluster_id=cluster_id)
-            log_time(f"Start took {time.time()-t0:.1f}s - Result: {start_result}")
+            log_time(f"Start took {time.time() - t0:.1f}s - Result: {start_result}")
             # Start may fail if cluster is already starting/running, that's ok
             if "error" in str(start_result).lower() and "already" not in str(start_result).lower():
-                assert False, f"Start failed unexpectedly: {start_result}"
+                raise AssertionError(f"Start failed unexpectedly: {start_result}")
 
             # Wait for cluster to start processing the request
             log_time("Waiting 10s after start request...")
@@ -198,15 +197,16 @@ class TestClusterLifecycle:
             # Check state (should be PENDING, RUNNING, or STARTING)
             t0 = time.time()
             status = manage_cluster(action="get", cluster_id=cluster_id)
-            log_time(f"State check took {time.time()-t0:.1f}s - State: {status.get('state')}")
+            log_time(f"State check took {time.time() - t0:.1f}s - State: {status.get('state')}")
 
             # Step 4: Terminate the cluster
             log_time("Step 4: Terminating cluster...")
             t0 = time.time()
             terminate_result = manage_cluster(action="terminate", cluster_id=cluster_id)
-            log_time(f"Terminate took {time.time()-t0:.1f}s - Result: {terminate_result}")
-            assert "error" not in str(terminate_result).lower() or terminate_result.get("success"), \
+            log_time(f"Terminate took {time.time() - t0:.1f}s - Result: {terminate_result}")
+            assert "error" not in str(terminate_result).lower() or terminate_result.get("success"), (
                 f"Terminate failed: {terminate_result}"
+            )
 
             # Wait for termination to process
             log_time("Waiting 10s after terminate request...")
@@ -219,7 +219,7 @@ class TestClusterLifecycle:
                 t0 = time.time()
                 status = manage_cluster(action="get", cluster_id=cluster_id)
                 state = status.get("state")
-                log_time(f"Poll took {time.time()-t0:.1f}s - State after {waited}s: {state}")
+                log_time(f"Poll took {time.time() - t0:.1f}s - State after {waited}s: {state}")
                 if state == "TERMINATED":
                     break
                 time.sleep(10)
@@ -229,9 +229,10 @@ class TestClusterLifecycle:
             log_time("Step 5: Deleting cluster...")
             t0 = time.time()
             delete_result = manage_cluster(action="delete", cluster_id=cluster_id)
-            log_time(f"Delete took {time.time()-t0:.1f}s - Result: {delete_result}")
-            assert "error" not in str(delete_result).lower() or delete_result.get("success"), \
+            log_time(f"Delete took {time.time() - t0:.1f}s - Result: {delete_result}")
+            assert "error" not in str(delete_result).lower() or delete_result.get("success"), (
                 f"Delete failed: {delete_result}"
+            )
 
             # Wait for deletion
             time.sleep(5)
@@ -239,12 +240,9 @@ class TestClusterLifecycle:
             # Verify cluster is gone or marked as deleted
             t0 = time.time()
             final_status = manage_cluster(action="get", cluster_id=cluster_id)
-            log_time(f"Final check took {time.time()-t0:.1f}s - Status: {final_status}")
+            log_time(f"Final check took {time.time() - t0:.1f}s - Status: {final_status}")
 
-            is_deleted = (
-                final_status.get("exists") is False or
-                final_status.get("state") in ("DELETED", "TERMINATED")
-            )
+            is_deleted = final_status.get("exists") is False or final_status.get("state") in ("DELETED", "TERMINATED")
             assert is_deleted, f"Cluster should be deleted: {final_status}"
 
             log_time("Full cluster lifecycle test PASSED!")

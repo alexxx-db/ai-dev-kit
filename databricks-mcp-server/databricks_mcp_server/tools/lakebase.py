@@ -123,8 +123,12 @@ def manage_lakebase_database(
         if not name:
             return {"error": "create_or_update requires: name"}
         return _create_or_update_database(
-            name=name, type=type, capacity=capacity, stopped=stopped,
-            display_name=display_name, pg_version=pg_version,
+            name=name,
+            type=type,
+            capacity=capacity,
+            stopped=stopped,
+            display_name=display_name,
+            pg_version=pg_version,
         )
 
     elif act == "get":
@@ -187,10 +191,16 @@ def manage_lakebase_branch(
         if not project_name or not branch_id:
             return {"error": "create_or_update requires: project_name, branch_id"}
         return _create_or_update_branch(
-            project_name=project_name, branch_id=branch_id, source_branch=source_branch,
-            ttl_seconds=ttl_seconds, no_expiry=no_expiry, is_protected=is_protected,
-            endpoint_type=endpoint_type, autoscaling_limit_min_cu=autoscaling_limit_min_cu,
-            autoscaling_limit_max_cu=autoscaling_limit_max_cu, scale_to_zero_seconds=scale_to_zero_seconds,
+            project_name=project_name,
+            branch_id=branch_id,
+            source_branch=source_branch,
+            ttl_seconds=ttl_seconds,
+            no_expiry=no_expiry,
+            is_protected=is_protected,
+            endpoint_type=endpoint_type,
+            autoscaling_limit_min_cu=autoscaling_limit_min_cu,
+            autoscaling_limit_max_cu=autoscaling_limit_max_cu,
+            scale_to_zero_seconds=scale_to_zero_seconds,
         )
 
     elif act == "delete":
@@ -242,9 +252,12 @@ def manage_lakebase_sync(
         if not all([instance_name, source_table_name, target_table_name]):
             return {"error": "create_or_update requires: instance_name, source_table_name, target_table_name"}
         return _create_or_update_sync(
-            instance_name=instance_name, source_table_name=source_table_name,
-            target_table_name=target_table_name, catalog_name=catalog_name,
-            database_name=database_name, primary_key_columns=primary_key_columns,
+            instance_name=instance_name,
+            source_table_name=source_table_name,
+            target_table_name=target_table_name,
+            catalog_name=catalog_name,
+            database_name=database_name,
+            primary_key_columns=primary_key_columns,
             scheduling_policy=scheduling_policy,
         )
 
@@ -284,8 +297,12 @@ def generate_lakebase_credential(
 
 
 def _create_or_update_database(
-    name: str, type: str, capacity: str, stopped: bool,
-    display_name: Optional[str], pg_version: str,
+    name: str,
+    type: str,
+    capacity: str,
+    stopped: bool,
+    display_name: Optional[str],
+    pg_version: str,
 ) -> Dict[str, Any]:
     """Create or update a Lakebase database."""
     db_type = type.lower()
@@ -299,6 +316,7 @@ def _create_or_update_database(
             result = _create_instance(name=name, capacity=capacity, stopped=stopped)
             try:
                 from ..manifest import track_resource
+
                 track_resource(resource_type="lakebase_instance", name=name, resource_id=name)
             except Exception:
                 pass
@@ -319,6 +337,7 @@ def _create_or_update_database(
             )
             try:
                 from ..manifest import track_resource
+
                 track_resource(resource_type="lakebase_project", name=name, resource_id=name)
             except Exception:
                 pass
@@ -392,10 +411,16 @@ def _delete_database(name: str, type: str, force: bool) -> Dict[str, Any]:
 
 
 def _create_or_update_branch(
-    project_name: str, branch_id: str, source_branch: Optional[str],
-    ttl_seconds: Optional[int], no_expiry: bool, is_protected: Optional[bool],
-    endpoint_type: str, autoscaling_limit_min_cu: Optional[float],
-    autoscaling_limit_max_cu: Optional[float], scale_to_zero_seconds: Optional[int],
+    project_name: str,
+    branch_id: str,
+    source_branch: Optional[str],
+    ttl_seconds: Optional[int],
+    no_expiry: bool,
+    is_protected: Optional[bool],
+    endpoint_type: str,
+    autoscaling_limit_min_cu: Optional[float],
+    autoscaling_limit_max_cu: Optional[float],
+    scale_to_zero_seconds: Optional[int],
 ) -> Dict[str, Any]:
     """Create or update a branch with compute endpoint."""
     existing = _find_branch(project_name, branch_id)
@@ -461,9 +486,13 @@ def _create_or_update_branch(
 
 
 def _create_or_update_sync(
-    instance_name: str, source_table_name: str, target_table_name: str,
-    catalog_name: Optional[str], database_name: str,
-    primary_key_columns: Optional[List[str]], scheduling_policy: str,
+    instance_name: str,
+    source_table_name: str,
+    target_table_name: str,
+    catalog_name: Optional[str],
+    database_name: str,
+    primary_key_columns: Optional[List[str]],
+    scheduling_policy: str,
 ) -> Dict[str, Any]:
     """Create or update a sync configuration."""
     # Derive catalog name from target table if not provided

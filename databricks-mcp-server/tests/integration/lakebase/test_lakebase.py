@@ -148,7 +148,7 @@ class TestAutoscaleLifecycle:
                 type="autoscale",
             )
             if "error" not in existing:
-                log_time(f"Found existing project, deleting...")
+                log_time("Found existing project, deleting...")
                 manage_lakebase_database(
                     action="delete",
                     name=project_name,
@@ -164,7 +164,7 @@ class TestAutoscaleLifecycle:
                 action="create_or_update",
                 name=project_name,
                 type="autoscale",
-                display_name=f"Test Autoscale Project",
+                display_name="Test Autoscale Project",
             )
             log_time(f"Create result: {create_result}")
             assert "error" not in create_result, f"Create project failed: {create_result}"
@@ -222,8 +222,7 @@ class TestAutoscaleLifecycle:
             branches = get_project.get("branches", [])
             branch_names = [b.get("name", "") for b in branches]
             log_time(f"Branches found: {branch_names}")
-            assert any(branch_id in name for name in branch_names), \
-                f"Branch should exist: {branch_names}"
+            assert any(branch_id in name for name in branch_names), f"Branch should exist: {branch_names}"
 
             # Step 5: Delete the branch
             log_time("Step 5: Deleting branch...")
@@ -245,8 +244,9 @@ class TestAutoscaleLifecycle:
             branches_after = get_after_branch_delete.get("branches", [])
             branch_names_after = [b.get("name", "") for b in branches_after]
             log_time(f"Branches after delete: {branch_names_after}")
-            assert not any(branch_id in name for name in branch_names_after), \
+            assert not any(branch_id in name for name in branch_names_after), (
                 f"Branch should be deleted: {branch_names_after}"
+            )
             branch_name = None  # Mark as deleted
 
             # Step 7: Delete the project
@@ -268,8 +268,9 @@ class TestAutoscaleLifecycle:
                 type="autoscale",
             )
             log_time(f"Get after delete: {get_after}")
-            assert "error" in get_after or "not found" in str(get_after).lower(), \
+            assert "error" in get_after or "not found" in str(get_after).lower(), (
                 f"Project should be deleted: {get_after}"
+            )
 
             log_time("Full autoscale lifecycle test PASSED!")
 

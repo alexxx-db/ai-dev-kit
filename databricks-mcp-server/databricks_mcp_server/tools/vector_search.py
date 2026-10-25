@@ -99,6 +99,7 @@ def manage_vs_endpoint(
 
         try:
             from ..manifest import track_resource
+
             track_resource(resource_type="vs_endpoint", name=name, resource_id=name)
         except Exception:
             pass
@@ -188,6 +189,7 @@ def manage_vs_index(
 
         try:
             from ..manifest import track_resource
+
             track_resource(resource_type="vs_index", name=name, resource_id=name)
         except Exception:
             pass

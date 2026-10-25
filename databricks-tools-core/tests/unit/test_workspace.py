@@ -274,9 +274,7 @@ class TestUploadToWorkspace:
         )
 
         # Should call mkdirs for parent directory
-        mock_client.workspace.mkdirs.assert_called_with(
-            "/Workspace/Users/test@example.com/deep/nested"
-        )
+        mock_client.workspace.mkdirs.assert_called_with("/Workspace/Users/test@example.com/deep/nested")
 
     @mock.patch("databricks_tools_core.file.workspace.get_workspace_client")
     def test_handles_upload_failure(self, mock_get_client, tmp_path):
