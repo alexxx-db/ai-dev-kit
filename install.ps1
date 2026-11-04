@@ -85,6 +85,8 @@ $script:ListSkills   = $false
 $script:DryRun       = ($env:DRY_RUN -in @("true", "1"))
 $script:Uninstall    = $false
 $script:AssumeYes    = $false
+# Set only while Invoke-PriorInstallCheck runs its cleanup (see Write-Err)
+$script:InPriorInstallCleanup = $false
 # Include experimental agent skills in profile/"all" selections (default: true).
 # Pass --experimental false (or DEVKIT_EXPERIMENTAL=false) for stable only.
 # Explicit --skills requests are always honored as named.
@@ -288,6 +290,9 @@ function Write-Warn { param([string]$Text) if (-not $script:Silent) { Write-Host
 function Write-Err  {
     param([string]$Text)
     Write-Host "  " -NoNewline; Write-Host "x" -ForegroundColor Red -NoNewline; Write-Host " $Text"
+    # During the prior-install cleanup, throw instead of exiting so Invoke-PriorInstallCheck
+    # can report it and carry on with the install, as install.sh's subshell does.
+    if ($script:InPriorInstallCleanup) { throw $Text }
     Write-Host ""
     Write-Host "  Press any key to exit..." -ForegroundColor DarkGray
     try { $null = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch {}
@@ -560,14 +565,23 @@ function Remove-ClaudePlugin {
     else { $scopes = @("user"); $cmdScope = "user" }
     if (Get-Command claude -ErrorAction SilentlyContinue) {
         $removed = $false
-        foreach ($k in $Keys) {
-            foreach ($sc in $scopes) {
-                # Subcommand name has varied across versions (uninstall vs remove) — try both.
-                & claude plugin uninstall $k -y --scope $sc *>$null
-                if ($LASTEXITCODE -ne 0) { & claude plugin remove $k -y --scope $sc *>$null }
-                if ($LASTEXITCODE -eq 0) { Write-Msg "removed Claude Code plugin $k ($sc scope)"; $removed = $true }
+        # The CLI writes to stderr for a scope the plugin isn't in. Under the script's
+        # EAP=Stop that throws on Windows PowerShell 5.1, skipping the fallback and the
+        # remaining scopes, so run these calls with EAP=Continue. LASTEXITCODE is set to 1
+        # first: a call that doesn't run (or a script shim that returns without an exit
+        # code) leaves it as it was, and a stale 0 would read as a removal.
+        $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+        try {
+            foreach ($k in $Keys) {
+                foreach ($sc in $scopes) {
+                    # Subcommand name has varied across versions (uninstall vs remove) — try both.
+                    $global:LASTEXITCODE = 1
+                    & claude plugin uninstall $k -y --scope $sc *>$null
+                    if ($LASTEXITCODE -ne 0) { & claude plugin remove $k -y --scope $sc *>$null }
+                    if ($LASTEXITCODE -eq 0) { Write-Msg "removed Claude Code plugin $k ($sc scope)"; $removed = $true }
+                }
             }
-        }
+        } finally { $ErrorActionPreference = $prevEAP }
         if ($removed) { return }
     }
     $partial = ""; $alt = ""
@@ -1237,10 +1251,9 @@ function Test-Dependencies {
     # Databricks CLI
     if (Get-Command databricks -ErrorAction SilentlyContinue) {
         $cliVersion = Get-DatabricksCliVersion
-        $parsed = $null
-        if (-not $cliVersion -or -not [version]::TryParse($cliVersion, [ref]$parsed)) {
+        if (-not $cliVersion) {
             Write-Warn "Could not determine Databricks CLI version"
-        } elseif ($parsed -ge [version]$MinCliVersion) {
+        } elseif (Test-CliVersionAtLeast $cliVersion $MinCliVersion) {
             Write-Ok "Databricks CLI v$cliVersion"
         } else {
             Write-Warn "Databricks CLI v$cliVersion is outdated (minimum: v$MinCliVersion)"
@@ -1699,23 +1712,47 @@ function Get-AgentBInventory {
 }
 
 # Installed Databricks CLI version (e.g. 1.20.0), or "" if the CLI is missing.
-# stderr is dropped (not merged) so an update notice can't throw under the
-# script's EAP=Stop on Windows PowerShell 5.1, and the output is joined so
-# -match runs on one string and sets $Matches. Prefers the "Databricks CLI vX.Y.Z"
-# line so a version in an update notice can't be picked up instead.
+# Reads the "Version" field of `databricks version -o json`, as install.sh does,
+# so nothing in an update notice (even one on stdout) can stand in for it. CLIs
+# without that command fall back to the --version text,
+# preferring the "Databricks CLI vX.Y.Z" line and matching case like install.sh.
+# stderr is dropped (not merged) so a notice can't throw under the script's
+# EAP=Stop on Windows PowerShell 5.1.
 function Get-DatabricksCliVersion {
     if (-not (Get-Command databricks -ErrorAction SilentlyContinue)) { return "" }
     $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    $version = ""
     try {
-        $cliOutput = (& databricks --version 2>$null) -join "`n"
-    } catch {
-        $cliOutput = ""
+        $json = ""
+        try { $json = (& databricks version -o json 2>$null) -join "`n" } catch {}
+        if ($json -cmatch '"Version":\s*"([0-9]+\.[0-9]+\.[0-9]+)') { $version = $Matches[1] }
+        if (-not $version) {
+            $cliOutput = ""
+            try { $cliOutput = (& databricks --version 2>$null) -join "`n" } catch {}
+            if ($cliOutput -cmatch 'Databricks CLI v([0-9]+\.[0-9]+\.[0-9]+)') { $version = $Matches[1] }
+            elseif ($cliOutput -cmatch '([0-9]+\.[0-9]+\.[0-9]+)') { $version = $Matches[1] }
+        }
     } finally {
         $ErrorActionPreference = $prevEAP
     }
-    if ($cliOutput -match 'Databricks CLI v(\d+\.\d+\.\d+)') { return $Matches[1] }
-    if ($cliOutput -match '(\d+\.\d+\.\d+)') { return $Matches[1] }
-    return ""
+    return $version
+}
+
+# True when $Version is at or above $Minimum, comparing each dot-separated part as
+# a whole number ([bigint], so parts past Int32 compare instead of making a
+# [version] cast throw under EAP=Stop). When one is a prefix of the other, the
+# shorter one is older, as with install.sh's version_gte. An empty or non-numeric
+# version or minimum (the floors are plain X.Y.Z) is never "at least".
+function Test-CliVersionAtLeast {
+    param([string]$Version, [string]$Minimum)
+    $numeric = '^[0-9]+(\.[0-9]+)*$'
+    if ($Version -cnotmatch $numeric -or $Minimum -cnotmatch $numeric) { return $false }
+    $have = $Version.Split('.'); $need = $Minimum.Split('.')
+    for ($i = 0; $i -lt [Math]::Min($have.Count, $need.Count); $i++) {
+        $a = [System.Numerics.BigInteger]::Parse($have[$i]); $b = [System.Numerics.BigInteger]::Parse($need[$i])
+        if ($a -ne $b) { return $a -gt $b }
+    }
+    return $have.Count -ge $need.Count
 }
 
 # Gate for `databricks aitools` (ships with the Databricks CLI v1.0.0+).
@@ -1726,7 +1763,7 @@ function Confirm-AitoolsCli {
     $attempts = 0
     while ($true) {
         $cliVersion = Get-DatabricksCliVersion
-        if ($cliVersion -and ([version]$cliVersion -ge [version]$MinAitoolsCliVersion)) {
+        if (Test-CliVersionAtLeast $cliVersion $MinAitoolsCliVersion) {
             return $true
         }
 
@@ -1787,8 +1824,8 @@ function Resolve-AitoolsAgents {
             "codex"       { $agents += "codex" }
             "opencode"    { $agents += "opencode" }
             "antigravity" { $agents += "antigravity" }
-            "gemini"      { if ($cliVersion -and ([version]$cliVersion -ge [version]$MinAitoolsGeminiCliVersion)) { $agents += "gemini" } }
-            "kiro"        { if ($cliVersion -and ([version]$cliVersion -ge [version]$MinAitoolsKiroCliVersion)) { $agents += "kiro" } }
+            "gemini"      { if (Test-CliVersionAtLeast $cliVersion $MinAitoolsGeminiCliVersion) { $agents += "gemini" } }
+            "kiro"        { if (Test-CliVersionAtLeast $cliVersion $MinAitoolsKiroCliVersion) { $agents += "kiro" } }
         }
     }
     $script:AitoolsAgents = ($agents -join ',')
@@ -2387,7 +2424,7 @@ function Show-DryRunReport {
     $upgradeFirst = $false
     if ($script:SelectedAllAgentB -or $script:SelectedAgentBSkills.Count -gt 0) {
         $cliVersion = Get-DatabricksCliVersion
-        $upgradeFirst = -not ($cliVersion -and ([version]$cliVersion -ge [version]$MinAitoolsCliVersion))
+        $upgradeFirst = -not (Test-CliVersionAtLeast $cliVersion $MinAitoolsCliVersion)
     }
     if ($upgradeFirst) { Resolve-AitoolsAgents -CliVersion $MinAitoolsKiroCliVersion } else { Resolve-AitoolsAgents }
     Write-Host ""
@@ -2863,14 +2900,20 @@ function Invoke-PriorInstallCheck {
         Write-Warn "Leaving the previous install in place - some skills may be stale or duplicated."
         return
     }
-    # Full uninstall for THIS scope. Invoke-Uninstall RETURNS (it does not exit), so
-    # the install continues afterward on a freshly cleaned slate. Force AssumeYes so
-    # it doesn't ask a second time (we already confirmed), then restore it.
+    # Full uninstall for THIS scope, then the install continues on a freshly cleaned
+    # slate. Force AssumeYes so it doesn't ask a second time (we already confirmed),
+    # then restore it. While InPriorInstallCleanup is set, Write-Err throws instead of
+    # exiting, so a failed step lands in the catch rather than ending the installer.
+    # The warning names the error, since only Write-Err prints its own message.
+    # A dry run only previews the removal, so it doesn't claim the old install is gone.
     $savedAssumeYes = $script:AssumeYes
     $script:AssumeYes = $true
-    try { Invoke-Uninstall } catch { Write-Warn "Cleanup reported an issue - continuing with the install." }
-    $script:AssumeYes = $savedAssumeYes
-    Write-Ok "Previous install removed - continuing with a fresh install."
+    $script:InPriorInstallCleanup = $true
+    $cleaned = $true
+    try { Invoke-Uninstall }
+    catch { $cleaned = $false; Write-Warn "Cleanup reported an issue ($($_.Exception.Message.TrimEnd('.'))) - continuing with the install." }
+    finally { $script:AssumeYes = $savedAssumeYes; $script:InPriorInstallCleanup = $false }
+    if ($cleaned -and -not $script:DryRun) { Write-Ok "Previous install removed - continuing with a fresh install." }
 }
 
 function Invoke-Main {

@@ -526,10 +526,14 @@ gemini_global_skills_dir() {
 
 # The relocated Gemini skills dir when GEMINI_CLI_HOME moves it, else empty.
 # Scans add it on top of ~/.gemini/skills, which can still hold older installs.
+# The default drops a trailing slash from HOME just as gemini_global_skills_dir
+# does, and -ef catches any other spelling of an existing dir ("$HOME/.",
+# "$HOME//", a symlink to $HOME), which would otherwise be scanned twice. The
+# scans skip dirs that don't exist, so those spellings only matter once it does.
 gemini_relocated_skills_dir() {
-    local dir
+    local dir default="${HOME%/}/.gemini/skills"
     dir=$(gemini_global_skills_dir)
-    [ "$dir" != "$HOME/.gemini/skills" ] && echo "$dir"
+    [ "$dir" = "$default" ] || [ "$dir" -ef "$default" ] || echo "$dir"
     return 0
 }
 
@@ -1671,14 +1675,20 @@ fetch_agent_b_inventory() {
 }
 
 # Installed Databricks CLI version (e.g. 1.20.0), or empty if the CLI is missing.
-# Prefers the "Databricks CLI vX.Y.Z" line so a version in an update notice
-# can't be picked up instead.
+# Reads the "Version" field of `databricks version -o json`, so nothing in an
+# update notice (even one on stdout) can stand in for it. CLIs without that
+# command fall back to the --version text, preferring the "Databricks CLI vX.Y.Z" line.
 databricks_cli_version() {
     command -v databricks >/dev/null 2>&1 || return 0
-    local out
-    out=$(databricks --version 2>/dev/null || true)
-    { echo "$out" | grep -oE 'Databricks CLI v[0-9]+\.[0-9]+\.[0-9]+' || echo "$out" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true; } \
-        | head -1 | sed 's/^Databricks CLI v//'
+    local out found
+    out=$(databricks version -o json 2>/dev/null || true)
+    found=$(echo "$out" | grep -oE '"Version": *"[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+    if [ -z "$found" ]; then
+        out=$(databricks --version 2>/dev/null || true)
+        found=$(echo "$out" | grep -oE 'Databricks CLI v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+        [ -n "$found" ] || found=$(echo "$out" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+    fi
+    echo "$found" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true
 }
 
 # Gate for `databricks aitools` (ships with the Databricks CLI v1.0.0+).
@@ -2306,7 +2316,7 @@ dry_run_report() {
 # Check Databricks CLI version meets minimum requirement
 check_cli_version() {
     local cli_version
-    cli_version=$(databricks --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    cli_version=$(databricks_cli_version)
 
     if [ -z "$cli_version" ]; then
         warn "Could not determine Databricks CLI version"
@@ -2784,10 +2794,15 @@ check_prior_install() {
         *)
             # Full uninstall for THIS scope, no extra scope/confirm prompt. Runs in a
             # subshell because run_uninstall exits on completion; the subshell absorbs
-            # that exit so the install continues on a freshly cleaned slate.
-            ( SCOPE_EXPLICIT=true; ASSUME_YES=true; run_uninstall ) \
-                || warn "Cleanup reported an issue — continuing with the install."
-            ok "Previous install removed — continuing with a fresh install."
+            # that exit so the install continues on a freshly cleaned slate. A dry run
+            # only previews the removal, so it doesn't claim the old install is gone.
+            if ( SCOPE_EXPLICIT=true; ASSUME_YES=true; run_uninstall ); then
+                if [ "$DRY_RUN" != true ]; then
+                    ok "Previous install removed — continuing with a fresh install."
+                fi
+            else
+                warn "Cleanup reported an issue — continuing with the install."
+            fi
             ;;
     esac
     return 0

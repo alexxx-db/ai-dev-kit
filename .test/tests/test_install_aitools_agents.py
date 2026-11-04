@@ -30,6 +30,8 @@ CASES = [
     ("1.19.9", "cursor,gemini"),
     ("1.20.0", "cursor,gemini,kiro"),
     ("1.100.0", "cursor,gemini,kiro"),
+    # a part past Int32: both installers compare it as a number
+    ("99999999999.0.0", "cursor,gemini,kiro"),
 ]
 
 
@@ -67,6 +69,7 @@ def _run_bash(tmp_path: Path, version: str | None, script: str, env: dict | None
         _bash_functions(
             "version_gte",
             "databricks_cli_version",
+            "check_cli_version",
             "map_aitools_agents",
             "gemini_global_skills_dir",
             "gemini_relocated_skills_dir",
@@ -101,6 +104,32 @@ def test_install_sh_skipped_last_agent_does_not_trip_set_e(tmp_path):
     assert result.stdout.strip() == "cursor"
 
 
+# CLIs that print an update notice before their version line. The installed CLI is
+# v1.11.0 in each, so it is too old for Gemini (1.12.0) and Kiro (1.20.0).
+def _cli_stub(version_text: str, json_version: str | None, json_preamble: str = "") -> str:
+    """A `databricks` stub: `version -o json` reports json_version, or fails like a CLI without it."""
+    json_doc = f'{{\n  "ProjectName": "cli",\n  "Version": "{json_version}",\n  "Major": 1\n}}'
+    json_branch = (
+        f"{json_preamble}  echo '{json_doc}'; exit 0" if json_version else '  echo "Error: unknown command" >&2; exit 1'
+    )
+    return f'#!/bin/sh\nif [ "$1" = version ]; then\n{json_branch}\nfi\n{version_text}'
+
+
+NOTICE_STUBS = {
+    # `version -o json` reports the version as data, whatever the notice says
+    "json-notice-names-the-cli": _cli_stub(
+        'echo "Databricks CLI v1.21.0 is available"\necho "Databricks CLI v1.21.0"\n', "1.11.0"
+    ),
+    # a notice on stdout ahead of the JSON doesn't hide the "Version" field
+    "json-after-a-notice-on-stdout": _cli_stub(
+        'echo "Databricks CLI v1.21.0"\n', "1.11.0", '  echo "Databricks CLI v1.21.0 is available"\n'
+    ),
+    # a CLI without `version -o json` falls back to the "Databricks CLI vX.Y.Z" line
+    "legacy-notice-before-version": _cli_stub(
+        'echo "Version 1.21.0 is available"\necho "Databricks CLI v1.11.0"\n', None
+    ),
+}
+
 # (stub `databricks` script, expected --agents for TOOLS="cursor kiro")
 NOISY_CLI_CASES = [
     # an update notice on stderr: PS merged it with 2>&1 into an array (and throws on PS 5.1)
@@ -118,11 +147,7 @@ NOISY_CLI_CASES = [
     # no semver at all: version unknown, so the gated agents are left out
     pytest.param('#!/bin/sh\necho "dev build"\n', "cursor", id="no-semver"),
     # a newer version in a notice before the version line must not lift an old CLI over the floors
-    pytest.param(
-        '#!/bin/sh\necho "Version 1.21.0 is available"\necho "Databricks CLI v1.11.0"\n',
-        "cursor",
-        id="notice-before-version",
-    ),
+    *(pytest.param(stub, "cursor", id=name) for name, stub in NOTICE_STUBS.items()),
 ]
 
 
@@ -132,6 +157,34 @@ def test_install_sh_cli_version_survives_noisy_output(tmp_path, stub, expected):
     result = _run_bash(tmp_path, None, _map_agents("cursor kiro"))
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == expected
+
+
+# (stub `databricks` script, minimum CLI version, expected message, reported as OK?)
+# Shared by install.sh's check_cli_version and install.ps1's Test-Dependencies.
+CHECK_CLI_CASES = [
+    pytest.param('#!/bin/sh\necho "Databricks CLI v0.200.0"\n', "0.278.0",
+                 "Databricks CLI v0.200.0 is outdated (minimum: v0.278.0)", False, id="outdated"),
+    pytest.param('#!/bin/sh\necho "Databricks CLI v1.20.0"\n', "0.278.0", "Databricks CLI v1.20.0", True, id="current"),
+    pytest.param(
+        "#!/bin/sh\necho dev\n", "0.278.0", "Could not determine Databricks CLI version", False, id="no-semver"
+    ),
+    pytest.param('#!/bin/sh\necho "Databricks CLI v99999999999.0.0"\n', "0.278.0",
+                 "Databricks CLI v99999999999.0.0", True, id="past-int32"),
+    *(pytest.param(stub, "1.12.0", "Databricks CLI v1.11.0 is outdated (minimum: v1.12.0)", False, id=name)
+      for name, stub in NOTICE_STUBS.items()),
+]
+
+
+@pytest.mark.parametrize("stub,minimum,message,is_ok", CHECK_CLI_CASES)
+def test_install_sh_check_cli_version_reports_cli_version(tmp_path, stub, minimum, message, is_ok):
+    _stub_cli(tmp_path, None, stub)
+    script = (
+        'ok() { echo "OK $*"; }; warn() { echo "WARN $*"; }; msg() { :; }\n'
+        f"MIN_CLI_VERSION={minimum}\ncheck_cli_version\n"
+    )
+    result = _run_bash(tmp_path, None, script)
+    assert result.returncode == 0, result.stderr
+    assert f"{'OK' if is_ok else 'WARN'} {message}" in result.stdout, result.stdout
 
 
 def test_install_sh_version_argument_overrides_installed_cli(tmp_path):
@@ -167,18 +220,51 @@ RELOCATED_CASES = [
     pytest.param(None, False, id="unset"),
     pytest.param("{home}", False, id="same-as-home"),
     pytest.param("{home}/", False, id="same-as-home-trailing-slash"),
+    pytest.param("{home}/.", False, id="same-as-home-dot-segment"),
+    pytest.param("{home}//", False, id="same-as-home-double-slash"),
     pytest.param("{home}/gem", True, id="relocated"),
 ]
 
 
 @pytest.mark.parametrize("gemini_home,relocated", RELOCATED_CASES)
 def test_install_sh_relocated_gemini_dir_only_when_moved(tmp_path, gemini_home, relocated):
-    # GEMINI_CLI_HOME naming $HOME is not a relocation, so scans must not count ~/.gemini twice
+    # GEMINI_CLI_HOME naming $HOME is not a relocation, so scans must not count ~/.gemini twice.
+    # The scans skip missing dirs, so the spelling only matters once ~/.gemini/skills exists.
     home = str(tmp_path.resolve())
+    (tmp_path / ".gemini" / "skills").mkdir(parents=True)
     env = {"HOME": home} | ({"GEMINI_CLI_HOME": gemini_home.format(home=home)} if gemini_home else {})
     result = _run_bash(tmp_path, None, "gemini_relocated_skills_dir\n", env)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == (f"{home}/gem/.gemini/skills" if relocated else "")
+
+
+@pytest.mark.parametrize("home_suffix", ["", "/"], ids=["home", "home-trailing-slash"])
+def test_install_sh_unmoved_gemini_dir_is_not_reported_before_it_exists(tmp_path, home_suffix):
+    # a fresh machine: no ~/.gemini yet and GEMINI_CLI_HOME unset is still "not moved"
+    env = {"HOME": f"{tmp_path.resolve()}{home_suffix}"}
+    result = _run_bash(tmp_path, None, "gemini_relocated_skills_dir\n", env)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == ""
+
+
+def test_install_sh_trailing_slash_home_is_not_a_relocation(tmp_path):
+    # HOME="/x/" with GEMINI_CLI_HOME unset names the same ~/.gemini/skills as HOME="/x"
+    home = tmp_path.resolve()
+    (home / ".gemini" / "skills").mkdir(parents=True)
+    result = _run_bash(tmp_path, None, "gemini_relocated_skills_dir\n", {"HOME": f"{home}/"})
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == ""
+
+
+def test_install_sh_gemini_cli_home_symlinked_to_home_is_not_a_relocation(tmp_path):
+    # a spelling no string compare can catch: the same directory reached through a symlink
+    home = tmp_path.resolve()
+    (home / ".gemini" / "skills").mkdir(parents=True)
+    (home / "home-link").symlink_to(home, target_is_directory=True)
+    env = {"HOME": str(home), "GEMINI_CLI_HOME": str(home / "home-link")}
+    result = _run_bash(tmp_path, None, "gemini_relocated_skills_dir\n", env)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == ""
 
 
 def test_install_sh_install_skills_uses_gemini_cli_home(tmp_path):
@@ -280,6 +366,16 @@ def test_install_sh_uninstall_finds_both_gemini_dirs(tmp_path):
     assert "~/.gemini/skills/databricks-jobs" in out
 
 
+def test_install_sh_uninstall_lists_gemini_skills_once_with_trailing_slash_home(tmp_path):
+    # the user-visible effect: a respelled HOME used to plan every ~/.gemini skill twice
+    home = tmp_path / "home"
+    skill = home / ".gemini" / "skills" / "databricks-jobs"
+    skill.mkdir(parents=True)
+    out = _run_sh_dry_run(tmp_path, None, {"HOME": f"{home}/"}, args=("--global", "--uninstall"))
+    assert "Skill folders (1):" in out
+    assert out.count(".gemini/skills/databricks-jobs") == 1
+
+
 def test_install_sh_dry_run_explicit_agent_skills_previews_upgrade(tmp_path):
     out = _run_sh_dry_run(tmp_path, None, args=("--global", "--tools", "kiro,gemini", "--skills", "databricks-jobs"))
     assert "--agents kiro,gemini --skills databricks-jobs --skills-only" in out
@@ -351,12 +447,18 @@ def _run_pwsh(tmp_path: Path, names: list[str], body: str, env: dict | None = No
 needs_pwsh = pytest.mark.skipif(PWSH is None, reason="pwsh not installed")
 
 
+PS_AGENT_FNS = ["Get-DatabricksCliVersion", "Test-CliVersionAtLeast", "Resolve-AitoolsAgents"]
+
+
 @needs_pwsh
 @pytest.mark.parametrize("version,expected", CASES)
 def test_install_ps1_maps_agents_by_cli_version(tmp_path, version, expected):
     stub = f'function databricks {{ "Databricks CLI v{version}" }}\n' if version else ""
-    body = f'{stub}$script:Tools = "{TOOLS}"\nResolve-AitoolsAgents\n$script:AitoolsAgents\n'
-    result = _run_pwsh(tmp_path, ["Get-DatabricksCliVersion", "Resolve-AitoolsAgents"], body)
+    body = (
+        f'$ErrorActionPreference = "Stop"\n{stub}$script:Tools = "{TOOLS}"\n'
+        "Resolve-AitoolsAgents\n$script:AitoolsAgents\n"
+    )
+    result = _run_pwsh(tmp_path, PS_AGENT_FNS, body)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == expected
 
@@ -367,7 +469,7 @@ def test_install_ps1_cli_version_survives_noisy_output(tmp_path, stub, expected)
     _stub_cli(tmp_path, None, stub)
     body = '$ErrorActionPreference = "Stop"\n$script:Tools = "cursor kiro"\n'
     body += "Resolve-AitoolsAgents\n$script:AitoolsAgents\n"
-    result = _run_pwsh(tmp_path, ["Get-DatabricksCliVersion", "Resolve-AitoolsAgents"], body)
+    result = _run_pwsh(tmp_path, PS_AGENT_FNS, body)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == expected
 
@@ -383,10 +485,74 @@ def test_install_ps1_gemini_skills_dir_follows_gemini_cli_home(tmp_path, scope, 
     assert result.stdout.strip().replace("\\", "/") == str(tmp_path / expected)
 
 
+@needs_pwsh
+@pytest.mark.parametrize(
+    "version,minimum,expected",
+    [
+        ("1.20.0", "1.20.0", "True"),
+        ("1.100.0", "1.20.0", "True"),
+        ("1.19.9", "1.20.0", "False"),
+        ("2.0", "1.20.0", "True"),
+        ("", "1.20.0", "False"),
+        ("1.2.x", "1.0.0", "False"),
+        # a part past Int32 (or past [decimal]) compares as a number instead of throwing
+        ("99999999999.0.0", "1.0.0", "True"),
+        ("1" + "0" * 29 + ".0.0", "1.0.0", "True"),
+        ("1.99999999999.0", "2.0.0", "False"),
+        # a shorter version that is a prefix of the other is older, as with install.sh's version_gte
+        ("1.20", "1.20.0", "False"),
+        ("1.20.0", "1.20", "True"),
+        # a bad minimum is never met rather than a throw
+        ("1.20.0", "1.20.0-rc1", "False"),
+        ("1.20.0", "", "False"),
+        # only ASCII digits are a version part
+        ("\u0661.20.0", "1.0.0", "False"),
+    ],
+)
+def test_install_ps1_cli_version_at_least(tmp_path, version, minimum, expected):
+    body = f"$ErrorActionPreference = 'Stop'\nTest-CliVersionAtLeast '{version}' '{minimum}'\n"
+    result = _run_pwsh(tmp_path, ["Test-CliVersionAtLeast"], body)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == expected
+
+
+OVERSIZED_CLI = 'function databricks { "Databricks CLI v99999999999.0.0" }\n'
+
+
+@needs_pwsh
+def test_install_ps1_cli_version_argument_past_int32_maps_agents(tmp_path):
+    # the -CliVersion path the dry run uses compares the same way as the installed-CLI path
+    body = (
+        '$ErrorActionPreference = "Stop"\n$script:Tools = "cursor kiro"\n'
+        "Resolve-AitoolsAgents -CliVersion '99999999999.0.0'\n$script:AitoolsAgents\n"
+    )
+    result = _run_pwsh(tmp_path, PS_AGENT_FNS, body)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "cursor,kiro"
+
+
+@needs_pwsh
+def test_install_ps1_cli_gate_accepts_a_version_past_int32(tmp_path):
+    # under the installer's EAP=Stop, the old [version] cast here ended the install
+    body = f"$ErrorActionPreference = 'Stop'\n{OVERSIZED_CLI}$script:Silent = $true\nConfirm-AitoolsCli\n"
+    names = ["Write-Err", "Write-Warn", "Get-DatabricksCliVersion", "Test-CliVersionAtLeast", "Confirm-AitoolsCli"]
+    result = _run_pwsh(tmp_path, names, body)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "True"
+
+
+@needs_pwsh
+def test_install_ps1_dry_run_accepts_a_version_past_int32(tmp_path):
+    out = _ps_dry_run(tmp_path, "99999999999.0.0", all_agent_skills=True)
+    assert "Would run: databricks aitools install --scope global --agents kiro,gemini" in out
+    assert "too old" not in out
+
+
 PS_DRY_RUN_FNS = [
     "Write-Msg",
     "Write-Warn",
     "Get-DatabricksCliVersion",
+    "Test-CliVersionAtLeast",
     "Resolve-AitoolsAgents",
     "Get-GeminiGlobalSkillsDir",
     "Get-AgentSkillTargetDirs",
@@ -399,6 +565,7 @@ def _ps_dry_run(tmp_path: Path, version: str | None, all_agent_skills: bool, age
     stub = f'function databricks {{ "Databricks CLI v{version}" }}\n' if version else ""
     skills = ", ".join(f"'{name}'" for name in agent_skills)
     body = (
+        "$ErrorActionPreference = 'Stop'\n"
         f"{stub}$script:Tools = 'kiro gemini windsurf'; $script:Scope = 'global'; $script:Profile_ = 'DEFAULT'\n"
         f"$script:SelectedAllAgentB = ${str(all_agent_skills).lower()}; $script:SelectedAgentBSkills = @({skills})\n"
         "$script:SelectedMlflowSkills = @(); $script:InstallExperimental = $false; $script:AgentBRelease = ''\n"
@@ -422,11 +589,7 @@ def test_install_ps1_dry_run_previews_what_a_real_run_does(tmp_path, version, ag
 
 
 @needs_pwsh
-@pytest.mark.parametrize(
-    "gemini_home,relocated",
-    # a "." segment is another spelling of the profile dir that only full-path normalization catches
-    [*RELOCATED_CASES, pytest.param("{home}/.", False, id="same-as-home-dot-segment")],
-)
+@pytest.mark.parametrize("gemini_home,relocated", RELOCATED_CASES)
 def test_install_ps1_relocated_gemini_dir_only_when_moved(tmp_path, gemini_home, relocated):
     home = str(tmp_path.resolve())
     env = {"USERPROFILE": home} | ({"GEMINI_CLI_HOME": gemini_home.format(home=home)} if gemini_home else {})
@@ -502,20 +665,158 @@ def test_install_ps1_flags_old_copy_in_relocated_gemini_dir(tmp_path):
 
 
 @needs_pwsh
+@pytest.mark.parametrize("stub,minimum,message,is_ok", CHECK_CLI_CASES)
+def test_install_ps1_test_dependencies_reports_cli_version(tmp_path, stub, minimum, message, is_ok):
+    # the PowerShell twin of test_install_sh_check_cli_version_reports_cli_version
+    _stub_cli(tmp_path, None, stub)
+    names = ["Write-Msg", "Write-Ok", "Write-Warn", "Write-Err", "Get-DatabricksCliVersion", "Test-CliVersionAtLeast",
+             "Test-Dependencies"]
+    body = f'$ErrorActionPreference = "Stop"\n$MinCliVersion = "{minimum}"\nTest-Dependencies\n'
+    result = _run_pwsh(tmp_path, names, body)
+    assert result.returncode == 0, result.stderr
+    assert f"{'v' if is_ok else '!'} {message}" in ANSI.sub("", result.stdout), result.stdout
+
+
+# Stubs for the prior-install check: an old install is found and the user accepts the cleanup.
+SH_PRIOR_INSTALL_STUBS = r"""
+ok()   { echo "OK: $*"; }
+warn() { echo "WARN: $*"; }
+die()  { echo "ERR: $*" >&2; exit 1; }
+detect_prior_install() { PRIOR_INSTALL_KIND=plugin; PRIOR_INSTALL_SUMMARY="the Claude Code plugin"; }
+leftovers_box() { :; }
+is_interactive() { return 0; }
+prompt() { echo "Y"; }
+"""
+
+
 @pytest.mark.parametrize(
-    "version,expected",
+    "uninstall,dry_run,removed,warned",
     [
-        ("0.200.0", "Databricks CLI v0.200.0 is outdated (minimum: v0.278.0)"),
-        ("1.20.0", "Databricks CLI v1.20.0"),
-        (None, "Could not determine Databricks CLI version"),
-        # a component past Int32 makes the [version] cast throw under EAP=Stop
-        ("99999999999.0.0", "Could not determine Databricks CLI version"),
+        ("exit 0", "false", True, False),
+        # remove_claude_plugin's failure path
+        ('die "Could not remove the Claude Code plugin."', "false", False, True),
+        ("exit 0", "true", False, False),  # a dry run only previews the removal
     ],
 )
-def test_install_ps1_test_dependencies_reports_cli_version(tmp_path, version, expected):
-    # None = a CLI whose --version has no semver at all
-    _stub_cli(tmp_path, None, f'#!/bin/sh\necho "Databricks CLI v{version}"\n' if version else "#!/bin/sh\necho dev\n")
-    names = ["Write-Msg", "Write-Ok", "Write-Warn", "Write-Err", "Get-DatabricksCliVersion", "Test-Dependencies"]
-    result = _run_pwsh(tmp_path, names, '$MinCliVersion = "0.278.0"\nTest-Dependencies\n')
+def test_install_sh_prior_install_cleanup_reports_its_result(tmp_path, uninstall, dry_run, removed, warned):
+    # the install carries on either way, but only says the old install is gone when it was removed
+    fns = tmp_path / "fns.sh"
+    fns.write_text(_bash_functions("check_prior_install"))
+    script = (
+        f'set -e\n. "{fns}"\n{SH_PRIOR_INSTALL_STUBS}\n'
+        f"run_uninstall() {{ {uninstall}; }}\n"
+        f'SILENT=false; SCOPE=project; DRY_RUN={dry_run}\ncheck_prior_install\necho "install continues"\n'
+    )
+    result = subprocess.run(
+        ["bash", "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"PATH": SYSTEM_PATH, "HOME": str(tmp_path)},
+    )
     assert result.returncode == 0, result.stderr
-    assert expected in ANSI.sub("", result.stdout)
+    assert "install continues" in result.stdout
+    assert ("OK: Previous install removed" in result.stdout) is removed
+    assert ("WARN: Cleanup reported an issue" in result.stdout) is warned
+
+
+PS_PRIOR_INSTALL_STUBS = r"""
+function Test-PriorInstall {
+    $script:PriorInstallKind = 'plugin'; $script:PriorInstallSummary = 'the Claude Code plugin'
+}
+function Show-LeftoversBox { param($Headline, $Detail, $Summary, $Action) }
+function Test-Interactive { $true }
+function Read-Prompt { param($PromptText, $Default) 'Y' }
+$script:Scope = 'project'; $script:Silent = $false; $script:AssumeYes = $false
+"""
+
+
+@needs_pwsh
+@pytest.mark.parametrize(
+    "uninstall,dry_run,removed,reason",
+    [
+        ("", "$false", True, None),
+        # Remove-ClaudePlugin's failure path
+        (
+            "Write-Err 'Could not remove the Claude Code plugin.'",
+            "$false",
+            False,
+            "Could not remove the Claude Code plugin",
+        ),
+        # any other error, e.g. Remove-Item under ErrorActionPreference Stop, which prints nothing of its own
+        ("throw 'Access to the path is denied.'", "$false", False, "Access to the path is denied"),
+        ("", "$true", False, None),  # a dry run only previews the removal
+    ],
+)
+def test_install_ps1_prior_install_cleanup_reports_its_result(tmp_path, uninstall, dry_run, removed, reason):
+    # the PowerShell twin: a failed cleanup must not end the installer, and Write-Err exits again afterwards
+    body = (
+        f'$ErrorActionPreference = "Stop"\n{PS_PRIOR_INSTALL_STUBS}\n$script:DryRun = {dry_run}\n'
+        f"function Invoke-Uninstall {{ {uninstall} }}\n"
+        'Invoke-PriorInstallCheck\nWrite-Host "install continues, AssumeYes=$($script:AssumeYes)"\n'
+        "Write-Err 'a later error'\nWrite-Host 'unreachable'\n"
+    )
+    result = _run_pwsh(tmp_path, ["Write-Ok", "Write-Warn", "Write-Err", "Invoke-PriorInstallCheck"], body)
+    out = ANSI.sub("", result.stdout)
+    assert "install continues, AssumeYes=False" in out, out + result.stderr
+    assert ("v Previous install removed" in out) is removed
+    # the warning says what failed
+    if reason:
+        assert f"! Cleanup reported an issue ({reason}) - continuing with the install." in out, out
+    else:
+        assert "! Cleanup reported an issue" not in out
+    # outside the cleanup, Write-Err still ends the installer through its own exit, not a stray throw
+    assert result.returncode == 1, out + result.stderr
+    assert "x a later error" in out
+    assert "Press any key to exit" in out
+    assert "unreachable" not in out
+
+
+@needs_pwsh
+def test_install_ps1_remove_claude_plugin_survives_native_errors(tmp_path):
+    # Windows PowerShell 5.1 turns a native command's stderr into a terminating error under the
+    # installer's EAP=Stop. PowerShell 7 doesn't, so this uses its closest equivalent: with
+    # $PSNativeCommandUseErrorActionPreference set (pwsh 7.4+), a failing native command throws
+    # under Stop. A probe call checks that it does here, so the test can't pass vacuously.
+    log = tmp_path / "claude.log"
+    claude = _stub_cli(tmp_path, None) / "claude"
+    # `uninstall` fails in every scope, `remove` works only in the project scope
+    claude.write_text(
+        f'#!/bin/sh\necho "$2 $6" >> "{log}"\n'
+        '[ "$2" = remove ] && [ "$6" = project ] && exit 0\necho "not installed in $6" >&2\nexit 1\n'
+    )
+    claude.chmod(0o755)
+    body = (
+        '$ErrorActionPreference = "Stop"; $PSNativeCommandUseErrorActionPreference = $true\n'
+        "try { & claude plugin uninstall probe -y --scope probe *>$null; Write-Host 'probe: no throw' }\n"
+        "catch { Write-Host 'probe: throws' }\n"
+        "$script:Scope = 'project'; $script:Silent = $false\n"
+        "Remove-ClaudePlugin -OthersRemoved 0 -Keys @('databricks-ai-dev-kit')\n"
+    )
+    result = _run_pwsh(tmp_path, ["Write-Msg", "Write-Err", "Remove-ClaudePlugin"], body)
+    out = ANSI.sub("", result.stdout)
+    if "probe: no throw" in out:
+        pytest.skip("this pwsh doesn't make a failing native command terminating")
+    assert "probe: throws" in out, out + result.stderr
+    assert result.returncode == 0, out + result.stderr
+    assert "removed Claude Code plugin databricks-ai-dev-kit (project scope)" in out
+    # the fallback and the remaining scope both ran
+    calls = log.read_text().split("\n")[1:5]
+    assert calls == ["uninstall project", "remove project", "uninstall local", "remove local"]
+
+
+@needs_pwsh
+def test_install_ps1_remove_claude_plugin_ignores_a_stale_exit_code(tmp_path):
+    # a `claude` that returns without setting an exit code (a script shim, or a call that never
+    # ran) must not count as a removal just because an earlier native call left LASTEXITCODE at 0
+    (_stub_cli(tmp_path, None) / "claude.ps1").write_text("# returns without an exit code\n")
+    body = (
+        '$ErrorActionPreference = "Stop"\n$global:LASTEXITCODE = 0\n'
+        "$script:Scope = 'user'; $script:Silent = $false\n"
+        "Remove-ClaudePlugin -OthersRemoved 0 -Keys @('databricks-ai-dev-kit')\n"
+    )
+    result = _run_pwsh(tmp_path, ["Write-Msg", "Write-Err", "Remove-ClaudePlugin"], body)
+    out = ANSI.sub("", result.stdout)
+    assert "removed Claude Code plugin" not in out, out
+    assert "x Could not remove the Claude Code plugin." in out, out + result.stderr
+    assert result.returncode == 1
